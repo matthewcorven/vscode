@@ -422,7 +422,7 @@ export class ChatListWidget extends Disposable {
 				}
 
 				this._onDidChangeItemHeight.fire(e);
-				// A row's height changed, so marker geometry (derived from element heights) must be recomputed; refreshIfDimensionsChanged() is insufficient because scrollHeight may not have updated yet.
+				// A row's height changed, so marker layout and viewport state must be refreshed.
 				this._scrollbarPromptMarkerController.refresh();
 			}),
 		);
@@ -539,7 +539,6 @@ export class ChatListWidget extends Disposable {
 		this._register(
 			this._tree.onDidChangeContentHeight(() => {
 				this._onDidChangeContentHeight.fire();
-				this._scrollbarPromptMarkerController.refreshIfDimensionsChanged();
 			}),
 		);
 
@@ -570,7 +569,7 @@ export class ChatListWidget extends Disposable {
 			this._tree.onDidScroll((e) => {
 				this._onDidScroll.fire(e);
 				this.updateScrollDownButtonVisibility();
-				this._scrollbarPromptMarkerController.refreshIfDimensionsChanged();
+				this._scrollbarPromptMarkerController.refresh();
 			}),
 		);
 
@@ -819,6 +818,10 @@ export class ChatListWidget extends Disposable {
 		return this._tree.hasElement(element);
 	}
 
+	isElementInViewport(element: ChatTreeItem): boolean {
+		return this._tree.hasElement(element) && this._tree.isElementInViewport(element);
+	}
+
 	/**
 	 * Update the height of an element.
 	 */
@@ -828,14 +831,6 @@ export class ChatListWidget extends Disposable {
 				this._tree.updateElementHeight(element, height);
 			});
 		}
-	}
-
-	getElementTop(element: ChatTreeItem): number {
-		return this._tree.getElementTop(element);
-	}
-
-	getElementHeight(element: ChatTreeItem): number {
-		return this._tree.getElementHeight(element);
 	}
 
 	getOverviewRulerLayoutInfo(): { parent: HTMLElement; insertBefore: HTMLElement } | undefined {

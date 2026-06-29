@@ -20,12 +20,11 @@ import { ChatScrollbarPromptMarkerController, IChatScrollbarPromptMarkerHost } f
  */
 class FakeHost extends mock<IChatScrollbarPromptMarkerHost>() implements IChatScrollbarPromptMarkerHost {
 	override readonly renderHeight: number = 0;
-	override readonly scrollHeight: number = 0;
+	readonly scrollHeight: number = 0;
 	private readonly _items: (IChatRequestViewModel | IChatResponseViewModel)[] = [];
-	private readonly _heights = new Map<string, number>();
-	private readonly _tops = new Map<string, number>();
 	private _focus: (IChatRequestViewModel | IChatResponseViewModel)[] = [];
 	private _layoutInfo: { parent: HTMLElement; insertBefore: HTMLElement } | undefined;
+	private readonly _viewportElements: Set<IChatRequestViewModel | IChatResponseViewModel>;
 
 	constructor(opts: {
 		renderHeight: number;
@@ -34,23 +33,22 @@ class FakeHost extends mock<IChatScrollbarPromptMarkerHost>() implements IChatSc
 		heights?: Map<string, number>;
 		tops?: Map<string, number>;
 		focus?: (IChatRequestViewModel | IChatResponseViewModel)[];
+		viewportElements?: Set<IChatRequestViewModel | IChatResponseViewModel>;
 		layoutInfo?: { parent: HTMLElement; insertBefore: HTMLElement };
 	}) {
 		super();
 		this.renderHeight = opts.renderHeight;
 		this.scrollHeight = opts.scrollHeight;
 		this._items = opts.items ?? [];
-		this._heights = opts.heights ?? new Map();
-		this._tops = opts.tops ?? new Map();
 		this._focus = opts.focus ?? [];
+		this._viewportElements = opts.viewportElements ?? new Set();
 		this._layoutInfo = opts.layoutInfo;
 	}
 
 	override getOverviewRulerLayoutInfo() { return this._layoutInfo; }
 	override getItems() { return this._items; }
 	override hasElement(element: IChatRequestViewModel | IChatResponseViewModel) { return this._items.includes(element); }
-	override getElementTop(element: IChatRequestViewModel | IChatResponseViewModel) { return this._tops.get(element.id) ?? 0; }
-	override getElementHeight(element: IChatRequestViewModel | IChatResponseViewModel) { return this._heights.get(element.id) ?? 0; }
+	override isElementInViewport(element: IChatRequestViewModel | IChatResponseViewModel) { return this._viewportElements.has(element); }
 	override getFocus() { return this._focus; }
 	override reveal() { /* no-op */ }
 	override focusItem() { /* no-op */ }
@@ -165,6 +163,13 @@ suite('ChatScrollbarPromptMarkerController', () => {
 		});
 	}
 
+	function getMarkerMidpointY(controller: ChatScrollbarPromptMarkerController, markerId: string): number {
+		const marker = controller['container'].querySelector(`[data-marker-id="${markerId}"]`) as HTMLElement;
+		const top = parseFloat(marker.style.top);
+		const height = parseFloat(marker.style.height);
+		return top + (height / 2);
+	}
+
 	suite('layout', () => {
 		test('places the container inside the overview ruler parent and sizes it to renderHeight x scrollbarWidth', () => {
 			const layoutInfo = makeLayoutInfo(14);
@@ -274,21 +279,21 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const promptMarker = markers[0] as HTMLElement;
 			assert.strictEqual(promptMarker.dataset.markerId, 'r1');
 			assert.strictEqual(promptMarker.dataset.markerType, 'prompt');
-			assert.strictEqual(promptMarker.style.left, 'auto');
-			assert.strictEqual(promptMarker.style.right, '0px');
-			assert.strictEqual(promptMarker.style.width, '50%');
+			assert.strictEqual(promptMarker.style.insetInlineEnd, '0px');
+			assert.strictEqual(promptMarker.style.width, '6px');
+			assert.strictEqual(promptMarker.style.height, '14px');
 			assert.strictEqual(promptMarker.style.zIndex, '60');
 
 			const fileChangeMarker = markers[1] as HTMLElement;
 			assert.strictEqual(fileChangeMarker.dataset.markerId, 'r1-response');
 			assert.strictEqual(fileChangeMarker.dataset.markerType, 'fileChange');
-			assert.strictEqual(fileChangeMarker.style.left, '0px');
-			assert.strictEqual(fileChangeMarker.style.right, '0px');
-			assert.strictEqual(fileChangeMarker.style.width, 'auto');
+			assert.strictEqual(fileChangeMarker.style.insetInlineEnd, '0px');
+			assert.strictEqual(fileChangeMarker.style.width, '6px');
+			assert.strictEqual(fileChangeMarker.style.height, '14px');
 			assert.strictEqual(fileChangeMarker.style.zIndex, '80');
 		});
 
-		test('left-lane markers get left:0, width:50%', () => {
+		test('all marker types share the same inline-end aligned stack layout', () => {
 			const req = makeRequest('r1');
 			const res = makeResponse('r1', [{ kind: 'questionCarousel', isUsed: false }]);
 			const layoutInfo = makeLayoutInfo(14);
@@ -304,9 +309,36 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const markers = controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker');
 			const askMarker = Array.from(markers).find(m => (m as HTMLElement).dataset.markerType === 'askQuestion') as HTMLElement;
 
-			assert.strictEqual(askMarker.style.left, '0px');
-			assert.strictEqual(askMarker.style.right, 'auto');
-			assert.strictEqual(askMarker.style.width, '50%');
+			assert.strictEqual(askMarker.style.insetInlineEnd, '0px');
+			assert.strictEqual(askMarker.style.width, '6px');
+			assert.strictEqual(askMarker.style.height, '14px');
+		});
+
+		test('prompt hover widths scale by prompt length while non-prompt markers keep the fixed hover width', () => {
+			const shortPrompt = makeRequest('short');
+			const longPrompt = {
+				...makeRequest('longer-prompt'),
+				messageText: 'This is a much longer prompt than the short one',
+			} as IChatRequestViewModel;
+			const questionResponse = makeResponse('short', [{ kind: 'questionCarousel', isUsed: false }]);
+			const layoutInfo = makeLayoutInfo(14);
+			const host = new FakeHost({
+				renderHeight: 200,
+				scrollHeight: 200,
+				items: [shortPrompt, questionResponse, longPrompt],
+				layoutInfo,
+			});
+			const controller = createController(host);
+
+			controller.layout();
+
+			const shortMarker = controller['container'].querySelector('[data-marker-id="short"]') as HTMLElement;
+			const askMarker = controller['container'].querySelector('[data-marker-id="short-response"]') as HTMLElement;
+			const longMarker = controller['container'].querySelector('[data-marker-id="longer-prompt"]') as HTMLElement;
+
+			assert.strictEqual(shortMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '16px');
+			assert.strictEqual(askMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '16px');
+			assert.strictEqual(longMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '32px');
 		});
 
 		test('active class toggles on the marker whose id matches the focused item', () => {
@@ -327,6 +359,30 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const promptMarker = Array.from(markers).find(m => (m as HTMLElement).dataset.markerId === 'r1') as HTMLElement;
 
 			assert.strictEqual(promptMarker.classList.contains('active'), true);
+		});
+
+		test('in-viewport class follows whether the marker target intersects the chat viewport', () => {
+			const req = makeRequest('r1');
+			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
+			const layoutInfo = makeLayoutInfo(14);
+			const viewportElements = new Set<IChatRequestViewModel | IChatResponseViewModel>([req]);
+			const host = new FakeHost({
+				renderHeight: 200, scrollHeight: 200,
+				items: [req, res], layoutInfo, viewportElements,
+			});
+			const controller = createController(host);
+
+			controller.layout();
+			const promptMarker = controller['container'].querySelector('[data-marker-id="r1"]') as HTMLElement;
+			const responseMarker = controller['container'].querySelector('[data-marker-id="r1-response"]') as HTMLElement;
+
+			assert.deepStrictEqual({ prompt: promptMarker.classList.contains('in-viewport'), response: responseMarker.classList.contains('in-viewport') }, { prompt: true, response: false });
+
+			viewportElements.clear();
+			viewportElements.add(res);
+			controller.refresh();
+
+			assert.deepStrictEqual({ prompt: promptMarker.classList.contains('in-viewport'), response: responseMarker.classList.contains('in-viewport') }, { prompt: false, response: true });
 		});
 
 		test('stale markers are removed from the DOM when descriptors shrink', () => {
@@ -390,10 +446,42 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			assert.strictEqual(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker').length, 1);
 		});
 
-		test('minHeight enforcement: a marker whose scaled height is below minHeight is centered around its scaled top', () => {
+		test('moving over any marker hitbox toggles the shared hover class on the container', () => {
+			const req = makeRequest('r1');
+			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
+			const layoutInfo = makeLayoutInfo(14);
+			const host = new FakeHost({
+				renderHeight: 200,
+				scrollHeight: 200,
+				items: [req, res],
+				layoutInfo,
+			});
+			const controller = createController(host);
+
+			controller.layout();
+			controller['container'].getBoundingClientRect = () => ({
+				width: 14, height: 200, x: 0, y: 0,
+				left: 0, top: 0, right: 14, bottom: 200,
+				toJSON: () => ({}),
+			});
+
+			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
+			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
+
+			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r1-response') } as MouseEvent);
+			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
+
+			controller['onOverviewRulerMouseMove']({ clientX: -11, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
+			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
+			assert.strictEqual(controller['getTargetAtPoint'](-11, getMarkerMidpointY(controller, 'r1')), undefined);
+
+			controller['onOverviewRulerMouseMove']({ clientX: -13, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
+			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), false);
+		});
+
+		test('a single marker is vertically centered using the fixed hitbox height', () => {
 			const req = makeRequest('r1');
 			const layoutInfo = makeLayoutInfo(14);
-			// Very small element height relative to scroll height → scaled height < 4 (minHeight)
 			const heights = new Map([['r1', 1]]);
 			const tops = new Map([['r1', 0]]);
 			const host = new FakeHost({
@@ -405,18 +493,14 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			controller.layout();
 			const marker = controller['container'].querySelector('.chat-scrollbar-prompt-marker') as HTMLElement;
 
-			// scaledHeight = 1 * (200/1000) = 0.2, which is < 4 (minHeight)
-			// height = max(4, round(0.2)) = 4, clamped to min(4, 200) = 4
-			// top = scaledTop + scaledHeight/2 - height/2 = 0 + 0.1 - 2 = -1.9 → clamped to 0
-			assert.strictEqual(marker.style.height, '4px');
-			assert.strictEqual(marker.style.top, '0px');
+			assert.strictEqual(marker.style.height, '14px');
+			assert.strictEqual(marker.style.top, '93px');
 		});
 
-		test('overlap resolution: when two markers would overlap, the lower one is pushed down', () => {
+		test('multiple markers stack around the center with a fixed stride when space allows', () => {
 			const req1 = makeRequest('r1');
 			const req2 = makeRequest('r2');
 			const layoutInfo = makeLayoutInfo(14);
-			// Both at top=0, height=100, scaled to 100px each in a 200px ruler → they overlap
 			const heights = new Map([['r1', 100], ['r2', 100]]);
 			const tops = new Map([['r1', 0], ['r2', 0]]);
 			const host = new FakeHost({
@@ -429,15 +513,13 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const markers = Array.from(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker')) as HTMLElement[];
 			const tops2 = markers.map(m => parseInt(m.style.top, 10));
 
-			// The second marker should be pushed below the first (top >= first.top + first.height + 1)
-			assert.ok(tops2[1] >= tops2[0] + 4 + 1, `second marker top ${tops2[1]} should be >= ${tops2[0] + 4 + 1}`);
+			assert.deepStrictEqual(tops2, [86, 100]);
 		});
 
-		test('overlap resolution clamps to rulerHeight - height', () => {
+		test('dense stacks compress the stride but keep all hitboxes inside the ruler', () => {
 			const req1 = makeRequest('r1');
 			const req2 = makeRequest('r2');
 			const layoutInfo = makeLayoutInfo(14);
-			// Both at top=0, height=100 in a 50px ruler → heavy overlap, must clamp
 			const heights = new Map([['r1', 100], ['r2', 100]]);
 			const tops = new Map([['r1', 0], ['r2', 0]]);
 			const host = new FakeHost({
@@ -454,18 +536,18 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				const height = parseInt(marker.style.height, 10);
 				assert.ok(top + height <= 50, `marker bottom ${top + height} should not exceed rulerHeight 50`);
 			}
+			assert.deepStrictEqual(markers.map(marker => parseInt(marker.style.top, 10)), [11, 25]);
 		});
 
-		test('overlap resolution backward pass: 3 crowded markers do not exceed ruler', () => {
+		test('three markers remain symmetrically centered when space allows', () => {
 			const req1 = makeRequest('r1');
 			const req2 = makeRequest('r2');
 			const req3 = makeRequest('r3');
 			const layoutInfo = makeLayoutInfo(14);
-			// 3 markers each 10px tall in a 50px ruler, all near the bottom
 			const heights = new Map([['r1', 10], ['r2', 10], ['r3', 10]]);
 			const tops = new Map([['r1', 35], ['r2', 38], ['r3', 41]]);
 			const host = new FakeHost({
-				renderHeight: 50, scrollHeight: 50,
+				renderHeight: 200, scrollHeight: 50,
 				items: [req1, req2, req3], heights, tops, layoutInfo,
 			});
 			const controller = createController(host);
@@ -473,58 +555,28 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			controller.layout();
 			const markers = Array.from(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker')) as HTMLElement[];
 			assert.strictEqual(markers.length, 3);
-
-			// All markers should be within the ruler bounds
-			for (let i = 0; i < markers.length; i++) {
-				const top = parseInt(markers[i].style.top, 10);
-				const height = parseInt(markers[i].style.height, 10);
-				assert.ok(top >= 0, `marker ${i} top ${top} should be >= 0`);
-				assert.ok(top + height <= 50, `marker ${i} bottom ${top + height} should not exceed rulerHeight 50`);
-			}
+			assert.deepStrictEqual(markers.map(marker => parseInt(marker.style.top, 10)), [79, 93, 107]);
 		});
 
-		test('refreshIfDimensionsChanged skips re-render when dimensions are unchanged', () => {
-			const req = makeRequest('r1');
-			const layoutInfo = makeLayoutInfo(14);
-			const heights = new Map([['r1', 100]]);
-			const tops = new Map([['r1', 0]]);
-			const host = new FakeHost({
-				renderHeight: 200, scrollHeight: 400,
-				items: [req], heights, tops, layoutInfo,
-			});
-			const controller = createController(host);
-
-			controller.layout();
-			const markerBefore = controller['container'].querySelector('.chat-scrollbar-prompt-marker') as HTMLElement;
-			const topBefore = markerBefore.style.top;
-
-			// Same dimensions — should be a no-op
-			controller.refreshIfDimensionsChanged();
-			const markerAfter = controller['container'].querySelector('.chat-scrollbar-prompt-marker') as HTMLElement;
-			assert.strictEqual(markerAfter.style.top, topBefore);
-		});
-
-		test('refreshIfDimensionsChanged re-renders when scrollHeight changes', () => {
+		test('layout re-renders markers when renderHeight changes', () => {
 			const req = makeRequest('r1');
 			const layoutInfo = makeLayoutInfo(14);
 			const heights = new Map([['r1', 100]]);
 			const tops = new Map([['r1', 100]]);
-			let scrollHeight = 400;
+			let renderHeight = 200;
 			const host = new FakeHost({
-				renderHeight: 200, scrollHeight,
+				renderHeight, scrollHeight: 400,
 				items: [req], heights, tops, layoutInfo,
 			});
-			// Override scrollHeight getter to be mutable
-			Object.defineProperty(host, 'scrollHeight', { get: () => scrollHeight });
+			Object.defineProperty(host, 'renderHeight', { get: () => renderHeight });
 			const controller = createController(host);
 
 			controller.layout();
 			const markerBefore = controller['container'].querySelector('.chat-scrollbar-prompt-marker') as HTMLElement;
 			const topBefore = markerBefore.style.top;
 
-			// Change scrollHeight — should trigger re-render with different positions
-			scrollHeight = 800;
-			controller.refreshIfDimensionsChanged();
+			renderHeight = 240;
+			controller.layout();
 			const markerAfter = controller['container'].querySelector('.chat-scrollbar-prompt-marker') as HTMLElement;
 			assert.notStrictEqual(markerAfter.style.top, topBefore);
 		});
@@ -548,7 +600,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 	});
 
 	suite('getTargetAtPoint', () => {
-		test('returns the correct target for a click inside a marker Y range, even in the opposite lane', () => {
+		test('returns the correct target for a click inside a centered marker hitbox', () => {
 			const req = makeRequest('r1');
 			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
 			const layoutInfo = makeLayoutInfo(14);
@@ -570,11 +622,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				toJSON: () => ({}),
 			});
 
-			// Marker is at top=0, height=4 (set by renderMarkers via layout)
-			// No need to mock marker.getBoundingClientRect — hit-testing uses cached style values
-
-			// Click at x=0 (left side, opposite lane), y=2 (within marker Y range)
-			const target = controller['getTargetAtPoint'](0, 2);
+			const target = controller['getTargetAtPoint'](0, getMarkerMidpointY(controller, 'r1'));
 			assert.strictEqual(target, req);
 		});
 
@@ -623,19 +671,18 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				toJSON: () => ({}),
 			});
 
-			const target = controller['getTargetAtPoint'](0, 2);
+			const target = controller['getTargetAtPoint'](0, getMarkerMidpointY(controller, 'r1'));
 			assert.strictEqual(target, undefined);
 		});
 
-		test('overlapping markers at the same Y: right-lane wins over left-lane wins over full-lane', () => {
+		test('dense overlapping hitboxes choose the marker whose center is nearest to the click', () => {
 			const req = makeRequest('r1'); // prompt → right lane
 			const res = makeResponse('r1', [{ kind: 'questionCarousel', isUsed: false }]); // askQuestion → left lane
 			const layoutInfo = makeLayoutInfo(14);
-			// Both at the same position so they overlap
 			const heights = new Map([['r1', 100], ['r1-response', 100]]);
 			const tops = new Map([['r1', 0], ['r1-response', 0]]);
 			const host = new FakeHost({
-				renderHeight: 200, scrollHeight: 200,
+				renderHeight: 10, scrollHeight: 200,
 				items: [req, res], heights, tops, layoutInfo,
 			});
 			const controller = createController(host);
@@ -648,21 +695,17 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				toJSON: () => ({}),
 			});
 
-			// Both markers overlap at Y=0..4 — set inline styles for cached hit-testing
-			const markers = container.querySelectorAll('.chat-scrollbar-prompt-marker');
-			for (const marker of markers) {
-				(marker as HTMLElement).style.top = '0px';
-				(marker as HTMLElement).style.height = '4px';
-			}
-
-			// Both markers overlap at Y=2; right-lane (prompt) should win
-			const target = controller['getTargetAtPoint'](7, 2);
+			const markerCenter = getMarkerMidpointY(controller, 'r1');
+			const responseCenter = getMarkerMidpointY(controller, 'r1-response');
+			const target = controller['getTargetAtPoint'](7, markerCenter + 0.1);
 			assert.strictEqual(target, req);
+			const responseTarget = controller['getTargetAtPoint'](7, responseCenter - 0.1);
+			assert.strictEqual(responseTarget, res);
 		});
 	});
 
 	suite('edge cases', () => {
-		test('scrollHeight <= 0 clears all markers and target maps', () => {
+		test('scrollHeight <= 0 no longer blocks rendering when renderHeight is available', () => {
 			const req = makeRequest('r1');
 			const layoutInfo = makeLayoutInfo(14);
 			const heights = new Map([['r1', 100]]);
@@ -675,9 +718,9 @@ suite('ChatScrollbarPromptMarkerController', () => {
 
 			controller.layout();
 
-			assert.strictEqual(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker').length, 0);
-			assert.strictEqual(controller['markerById'].size, 0);
-			assert.strictEqual(controller['targetById'].size, 0);
+			assert.strictEqual(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker').length, 1);
+			assert.strictEqual(controller['markerById'].size, 1);
+			assert.strictEqual(controller['targetById'].size, 1);
 		});
 
 		test('renderHeight <= 0 clears all markers and hides the container', () => {
@@ -895,7 +938,9 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			let prevented = false;
 			let stopped = false;
 			const event = {
-				clientX: 7, clientY: 2,
+				clientX: 7, clientY: Math.round(getMarkerMidpointY(controller, 'r1')),
+				pointerType: 'mouse',
+				button: 0,
 				preventDefault: () => { prevented = true; },
 				stopPropagation: () => { stopped = true; },
 			} as unknown as PointerEvent;
@@ -1055,7 +1100,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 
 		let prevented = false;
 		const event = {
-			clientX: 7, clientY: 2,
+			clientX: 7, clientY: getMarkerMidpointY(controller, 'r1'),
 			pointerType: 'mouse',
 			button: 2,
 			preventDefault: () => { prevented = true; },

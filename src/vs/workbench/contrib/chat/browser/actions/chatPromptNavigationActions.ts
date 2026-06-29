@@ -48,17 +48,6 @@ export const enum ChatScrollbarPromptMarkerType {
 }
 
 /**
- * Which horizontal portion of the scrollbar the marker occupies.
- * Left and right lanes each take 50% of the scrollbar width; full spans the entire width.
- * This mirrors Monaco's overview ruler lane layout.
- */
-export const enum ChatScrollbarPromptMarkerLane {
-	Left = 'left',
-	Right = 'right',
-	Full = 'full',
-}
-
-/**
  * The host widget that marker clicks are dispatched to.
  */
 export interface IChatScrollbarPromptMarkerTarget {
@@ -83,26 +72,10 @@ export interface IChatScrollbarPromptMarkerDescriptor {
 	readonly request: IChatRequestViewModel;
 	/** The chat row (request or response) that this marker positions itself against and navigates to when clicked. */
 	readonly target: IChatRequestViewModel | IChatResponseViewModel;
-	/** The semantic type, determining color and lane. */
+	/** The semantic type, determining color and priority. */
 	readonly markerType: ChatScrollbarPromptMarkerType;
-	/** Which horizontal lane the marker occupies. */
-	readonly lane: ChatScrollbarPromptMarkerLane;
 	/** Z-index ordering value; higher-priority markers render above lower ones when overlapping. */
 	readonly priority: number;
-	/** Minimum pixel height to keep the marker visible even for very short chat rows. */
-	readonly minHeight: number;
-	/**
-	 * When set, positions the marker at a fractional offset within the target row's
-	 * rendered height (0 = top, 1 = bottom). Used by file-change markers that represent
-	 * a sub-region of a large response. When undefined, the marker spans the full row.
-	 */
-	readonly topRatio?: number;
-	/**
-	 * When set, controls the fractional height of the marker relative to the target
-	 * row's rendered height. Used together with {@link topRatio} for sub-row markers.
-	 * When undefined, the marker uses the full row height.
-	 */
-	readonly heightRatio?: number;
 }
 
 /**
@@ -209,9 +182,7 @@ export function getScrollbarPromptMarkerDescriptors(
 			request: item,
 			target: item,
 			markerType: requestMarkerType,
-			lane: getMarkerLane(requestMarkerType),
 			priority: getMarkerPriority(requestMarkerType),
-			minHeight: 4,
 		});
 
 		// Emit zero or more markers for the paired response row
@@ -244,9 +215,7 @@ function getResponseMarkerDescriptors(
 				request,
 				target: request,
 				markerType: ChatScrollbarPromptMarkerType.FileChange,
-				lane: getMarkerLane(ChatScrollbarPromptMarkerType.FileChange),
 				priority: getMarkerPriority(ChatScrollbarPromptMarkerType.FileChange),
-				minHeight: 4,
 			}]
 			: [];
 	}
@@ -258,9 +227,7 @@ function getResponseMarkerDescriptors(
 			request,
 			target: response,
 			markerType: ChatScrollbarPromptMarkerType.Error,
-			lane: getMarkerLane(ChatScrollbarPromptMarkerType.Error),
 			priority: getMarkerPriority(ChatScrollbarPromptMarkerType.Error),
-			minHeight: 4,
 		}];
 	}
 
@@ -271,9 +238,7 @@ function getResponseMarkerDescriptors(
 			request,
 			target: response,
 			markerType: ChatScrollbarPromptMarkerType.AskQuestion,
-			lane: getMarkerLane(ChatScrollbarPromptMarkerType.AskQuestion),
 			priority: getMarkerPriority(ChatScrollbarPromptMarkerType.AskQuestion),
-			minHeight: 4,
 		}];
 	}
 
@@ -289,32 +254,11 @@ function getResponseMarkerDescriptors(
 			request,
 			target: response,
 			markerType: ChatScrollbarPromptMarkerType.FileChange,
-			lane: getMarkerLane(ChatScrollbarPromptMarkerType.FileChange),
 			priority: getMarkerPriority(ChatScrollbarPromptMarkerType.FileChange),
-			minHeight: 4,
 		}];
 	}
 
 	return [];
-}
-
-/**
- * Maps a marker type to its horizontal lane assignment.
- * - Prompt → right lane (user prompts on the right)
- * - AskQuestion → left lane (questions on the left)
- * - All others → full width
- */
-function getMarkerLane(
-	markerType: ChatScrollbarPromptMarkerType,
-): ChatScrollbarPromptMarkerLane {
-	switch (markerType) {
-		case ChatScrollbarPromptMarkerType.AskQuestion:
-			return ChatScrollbarPromptMarkerLane.Left;
-		case ChatScrollbarPromptMarkerType.Prompt:
-			return ChatScrollbarPromptMarkerLane.Right;
-		default:
-			return ChatScrollbarPromptMarkerLane.Full;
-	}
 }
 
 /**
@@ -367,10 +311,6 @@ function hasAskQuestionsResponse(response: IChatResponseViewModel | undefined): 
  * corresponds to a single file write operation (e.g. `copilot_createFile`
  * followed by its `textEditGroup`), allowing users to navigate to
  * individual file operations within a large response.
- *
- * Each descriptor carries {@link topRatio} and {@link heightRatio} so the
- * controller can position the marker at the correct sub-region of the
- * response row rather than spanning the entire row.
  */
 function getFileChangeResponseDescriptors(
 	request: IChatRequestViewModel,
@@ -388,11 +328,7 @@ function getFileChangeResponseDescriptors(
 		request,
 		target: response,
 		markerType: ChatScrollbarPromptMarkerType.FileChange,
-		lane: getMarkerLane(ChatScrollbarPromptMarkerType.FileChange),
 		priority: getMarkerPriority(ChatScrollbarPromptMarkerType.FileChange),
-		minHeight: 4,
-		topRatio: group.startIndex / parts.length,
-		heightRatio: Math.max((group.endExclusive - group.startIndex) / parts.length, 1 / parts.length),
 	}));
 }
 

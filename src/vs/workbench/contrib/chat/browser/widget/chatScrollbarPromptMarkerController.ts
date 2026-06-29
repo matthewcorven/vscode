@@ -35,28 +35,33 @@ import {
  */
 export interface IChatScrollbarPromptMarkerHost {
 	readonly renderHeight: number;
-	readonly scrollHeight: number;
 	getOverviewRulerLayoutInfo(): { parent: HTMLElement; insertBefore: HTMLElement } | undefined;
 	getItems(): ChatTreeItem[];
 	hasElement(element: ChatTreeItem): boolean;
-	getElementTop(element: ChatTreeItem): number;
-	getElementHeight(element: ChatTreeItem): number;
+	isElementInViewport(element: ChatTreeItem): boolean;
 	getFocus(): ChatTreeItem[];
 	reveal(element: ChatTreeItem, relativeTop?: number): void;
 	focusItem(item: ChatTreeItem): void;
 }
+
+const MARKER_INLINE_SIZE = 6;
+const MARKER_HOVER_INLINE_SIZE = 16;
+const MARKER_HITBOX_PADDING = 6;
+const MARKER_RESTING_HEIGHT = 2;
+const MARKER_HITBOX_HEIGHT = (MARKER_HITBOX_PADDING * 2) + MARKER_RESTING_HEIGHT;
+const MAX_PROMPT_HOVER_INLINE_SIZE = 32;
+const MARKER_HOVER_BOUNDS_MARGIN = 10;
 
 /**
  * Manages the lifecycle, layout, and interaction of scrollbar markers on the
  * chat overview ruler.
  *
  * The controller is responsible for:
- * - Computing marker positions from chat item heights and scroll dimensions
+	* - Computing stable center-stacked marker positions from descriptor order
  * - Rendering marker DOM elements (reusing existing elements across renders
  *   so CSS transitions can animate position/size changes)
- * - Resolving overlapping markers via collision detection and priority sorting
- * - Handling pointer/click events on the overview ruler, with full-width
- *   hit-testing so narrow lane markers are as clickable as the full scrollbar
+	* - Handling pointer/click events on the overview ruler against the centered
+	*   stack hitboxes, including dense-stack nearest-center resolution
  * - Deferring focus to the target chat row after scroll-induced re-renders settle
  */
 export class ChatScrollbarPromptMarkerController extends Disposable {
@@ -78,13 +83,17 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private readonly parentPointerCancelListener = this._register(
 		new MutableDisposable(),
 	);
+	private readonly parentMouseMoveListener = this._register(
+		new MutableDisposable(),
+	);
+	private readonly parentMouseOutListener = this._register(
+		new MutableDisposable(),
+	);
 	private pointerDownListenerParent: HTMLElement | undefined;
 	private visible = true;
 	private enabled = true;
 	private markerActivated = false;
 	private suppressNextClick = false;
-	private _lastScrollHeight = -1;
-	private _lastRenderHeight = -1;
 	private readonly _focusRetryDisposable = this._register(new MutableDisposable());
 	private readonly _clickSuppressionDisposable = this._register(new MutableDisposable());
 
@@ -116,6 +125,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	setVisible(visible: boolean): void {
 		this.visible = visible;
 		if (!visible) {
+			this.resetHoverState();
 			this.resetGestureState();
 			this.cancelPendingFocusRetries();
 		}
@@ -134,6 +144,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		}
 		this.enabled = enabled;
 		if (!enabled) {
+			this.resetHoverState();
 			this.resetGestureState();
 			this.cancelPendingFocusRetries();
 			this.clearMarkers();
@@ -198,6 +209,18 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 				() => this.onOverviewRulerPointerCancel(),
 				true,
 			);
+			this.parentMouseMoveListener.value = dom.addDisposableListener(
+				layoutInfo.parent,
+				dom.EventType.MOUSE_MOVE,
+				event => this.onOverviewRulerMouseMove(event),
+				true,
+			);
+			this.parentMouseOutListener.value = dom.addDisposableListener(
+				layoutInfo.parent,
+				dom.EventType.MOUSE_OUT,
+				event => this.onOverviewRulerMouseOut(event),
+				true,
+			);
 		}
 		this.updateContainerVisibility();
 		this.renderMarkers();
@@ -205,19 +228,6 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 
 	refresh(): void {
 		this.renderMarkers();
-	}
-
-	/**
-	 * Refreshes markers only when the scroll dimensions (scrollHeight or
-	 * renderHeight) have changed since the last render. This is used for
-	 * scroll events, where the viewport moves but marker geometry — which
-	 * is computed from element positions relative to total scroll height —
-	 * does not change unless virtualization re-measures row heights.
-	 */
-	refreshIfDimensionsChanged(): void {
-		if (this.host.scrollHeight !== this._lastScrollHeight || this.host.renderHeight !== this._lastRenderHeight) {
-			this.renderMarkers();
-		}
 	}
 
 	private updateContainerVisibility(): void {
@@ -237,6 +247,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		this.parentClickListener.clear();
 		this.parentPointerUpListener.clear();
 		this.parentPointerCancelListener.clear();
+		this.parentMouseMoveListener.clear();
+		this.parentMouseOutListener.clear();
 		this.pointerDownListenerParent = undefined;
 	}
 
@@ -292,6 +304,15 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		for (const [, marker] of this.markerById) { marker.remove(); }
 		this.markerById.clear();
 		this.targetById.clear();
+		this.resetHoverState();
+	}
+
+	private resetHoverState(): void {
+		this.container.classList.remove('chat-scrollbar-prompt-markers-hover');
+	}
+
+	private setHoverState(hovered: boolean): void {
+		this.container.classList.toggle('chat-scrollbar-prompt-markers-hover', hovered);
 	}
 
 	private renderMarkers(): void {
@@ -304,9 +325,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			return;
 		}
 
-		const scrollHeight = this.host.scrollHeight;
 		const rulerHeight = this.host.renderHeight;
-		if (scrollHeight <= 0 || rulerHeight <= 0) {
+		if (rulerHeight <= 0) {
 			for (const [, marker] of this.markerById) { marker.remove(); }
 			this.markerById.clear();
 			this.targetById.clear();
@@ -318,54 +338,22 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			this.host.getItems(),
 		).filter((descriptor) => this.host.hasElement(descriptor.target));
 		const activeMarkerId = this.getFocusedMarkerId();
-		const markerHeightScale = rulerHeight / scrollHeight;
+		const hitboxHeight = Math.min(MARKER_HITBOX_HEIGHT, rulerHeight);
+		const stackStride = descriptors.length <= 1
+			? 0
+			: Math.min(
+				MARKER_HITBOX_HEIGHT,
+				Math.max((rulerHeight - hitboxHeight) / (descriptors.length - 1), 1),
+			);
+		const stackHeight = hitboxHeight + (Math.max(descriptors.length - 1, 0) * stackStride);
+		const stackTop = Math.max((rulerHeight - stackHeight) / 2, 0);
+		const promptHoverWidthById = getPromptHoverWidthById(descriptors);
 
 		const nextMarkerById = new Map<string, HTMLElement>();
 		const nextTargetById = new Map<string, IChatRequestViewModel | IChatResponseViewModel>();
 
-		const markerLayouts = descriptors.map((descriptor) => {
-			const elementTop = this.host.getElementTop(descriptor.target);
-			const elementHeight = this.host.getElementHeight(descriptor.target);
-			const topRatio = descriptor.topRatio ?? 0;
-			const heightRatio = descriptor.heightRatio ?? 1;
-			const scaledTop = (elementTop + (elementHeight * topRatio)) * markerHeightScale;
-			const scaledHeight = (elementHeight * heightRatio) * markerHeightScale;
-			const height = Math.min(Math.max(descriptor.minHeight, Math.round(scaledHeight)), rulerHeight);
-			const top = scaledHeight < descriptor.minHeight
-				? scaledTop + (scaledHeight / 2) - (height / 2)
-				: scaledTop;
-			return { descriptor, top, height };
-		}).sort((a, b) => a.top - b.top || b.descriptor.priority - a.descriptor.priority);
-
-		for (let i = 1; i < markerLayouts.length; i++) {
-			const previous = markerLayouts[i - 1];
-			const current = markerLayouts[i];
-			const minimumTop = previous.top + previous.height + 1;
-			if (current.top < minimumTop) {
-				current.top = minimumTop;
-			}
-		}
-
-		for (let i = markerLayouts.length - 2; i >= 0; i--) {
-			const current = markerLayouts[i];
-			const next = markerLayouts[i + 1];
-			const rulerMaxTop = Math.max(rulerHeight - current.height, 0);
-			current.top = Math.min(current.top, next.top - current.height - 1, rulerMaxTop);
-		}
-
-		// Second forward pass: the backward pass may have pushed markers up and re-introduced overlaps;
-		// re-run the forward pass to resolve any such collisions.
-		for (let i = 1; i < markerLayouts.length; i++) {
-			const previous = markerLayouts[i - 1];
-			const current = markerLayouts[i];
-			const minimumTop = previous.top + previous.height + 1;
-			if (current.top < minimumTop) {
-				current.top = minimumTop;
-			}
-		}
-
-		for (const { descriptor, top, height } of markerLayouts) {
-			const clampedTop = Math.max(0, Math.min(Math.round(top), Math.max(rulerHeight - height, 0)));
+		for (const [index, descriptor] of descriptors.entries()) {
+			const top = Math.round(stackTop + (index * stackStride));
 
 			// Reuse existing marker element so CSS transitions can animate position/size changes
 			let marker = this.markerById.get(descriptor.id);
@@ -377,36 +365,21 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 				this.container.appendChild(marker);
 			}
 
-			switch (descriptor.lane) {
-				case 'left':
-					marker.style.left = '0';
-					marker.style.right = 'auto';
-					marker.style.width = '50%';
-					break;
-				case 'right':
-					marker.style.left = 'auto';
-					marker.style.right = '0';
-					marker.style.width = '50%';
-					break;
-				default:
-					marker.style.left = '0';
-					marker.style.right = '0';
-					marker.style.width = 'auto';
-					break;
-			}
-
 			marker.dataset.markerId = descriptor.id;
 			marker.dataset.requestId = descriptor.request.id;
 			marker.dataset.markerType = descriptor.markerType;
-			marker.dataset.lane = descriptor.lane;
-			marker.style.top = `${clampedTop}px`;
-			marker.style.height = `${height}px`;
+			marker.style.top = `${top}px`;
+			marker.style.height = `${hitboxHeight}px`;
+			marker.style.width = `${MARKER_INLINE_SIZE}px`;
+			marker.style.insetInlineEnd = '0';
+			marker.style.setProperty('--chat-scrollbar-prompt-marker-hover-width', `${promptHoverWidthById.get(descriptor.id) ?? MARKER_HOVER_INLINE_SIZE}px`);
 			marker.style.zIndex = String(descriptor.priority);
-			marker.className = `chat-scrollbar-prompt-marker chat-scrollbar-prompt-marker-type-${descriptor.markerType} chat-scrollbar-prompt-marker-lane-${descriptor.lane}`;
+			marker.className = `chat-scrollbar-prompt-marker chat-scrollbar-prompt-marker-type-${descriptor.markerType}`;
 			marker.classList.toggle(
 				'active',
 				descriptor.target.id === activeMarkerId,
 			);
+			marker.classList.toggle('in-viewport', this.host.isElementInViewport(descriptor.target));
 
 			nextMarkerById.set(descriptor.id, marker);
 			nextTargetById.set(descriptor.id, descriptor.target);
@@ -427,8 +400,6 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		for (const [id, target] of nextTargetById) {
 			this.targetById.set(id, target);
 		}
-		this._lastScrollHeight = scrollHeight;
-		this._lastRenderHeight = rulerHeight;
 		this.updateContainerVisibility();
 	}
 
@@ -484,45 +455,57 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		event.stopPropagation();
 	}
 
+	private onOverviewRulerMouseMove(event: MouseEvent): void {
+		this.setHoverState(!!this.getTargetAtPoint(event.clientX, event.clientY, true));
+	}
+
+	private onOverviewRulerMouseOut(event: MouseEvent): void {
+		const targetWindow = dom.getWindow(this.container);
+		if (event.relatedTarget instanceof targetWindow.Node && this.pointerDownListenerParent?.contains(event.relatedTarget)) {
+			return;
+		}
+
+		this.resetHoverState();
+	}
+
 	/**
-	 * Resolves which chat row a pointer event should navigate to, using
-	 * full-width Y-axis hit-testing against all rendered markers.
+	 * Resolves which chat row a pointer event should navigate to, using the
+	 * centered stack hitboxes rather than proportional transcript geometry.
 	 *
-	 * Unlike standard DOM hit-testing (which checks each marker's actual rect),
-	 * this method matches any marker whose Y range contains the click — even if
-	 * the click landed outside the marker's narrow lane. This makes 50%-width
-	 * lane markers as clickable as the full scrollbar width.
-	 *
-	 * When multiple markers overlap at the same Y position, priority is:
-	 * right-lane (prompt) > left-lane (ask-question) > full-lane (file-change/error).
+	 * When compressed stacks cause hitboxes to overlap, the marker whose center
+	 * is nearest to the click position wins.
 	 */
 	private getTargetAtPoint(
 		clientX: number,
 		clientY: number,
+		useExpandedHoverBounds = false,
 	): IChatRequestViewModel | IChatResponseViewModel | undefined {
 		if (!this.visible || this.container.style.display === 'none') {
 			return undefined;
 		}
 
-		// Hit-test against the full container width (not just the marker's narrow lane),
-		// so that clicking anywhere at a marker's Y position activates it — matching how
-		// Monaco's overview ruler handles clicks. When multiple markers overlap at the
-		// same Y, prefer right-lane (prompt) markers, then left-lane, then full-lane.
 		const containerRect = this.container.getBoundingClientRect();
 		if (
-			clientX < containerRect.left ||
-			clientX > containerRect.right ||
 			clientY < containerRect.top ||
 			clientY > containerRect.bottom
 		) {
 			return undefined;
 		}
+		if (!useExpandedHoverBounds && (clientX < containerRect.left || clientX > containerRect.right)) {
+			return undefined;
+		}
+		if (useExpandedHoverBounds) {
+			const expandedHoverWidth = this.getExpandedHoverWidth();
+			const isRtl = this.container.ownerDocument.documentElement.dir === 'rtl';
+			const markerLeft = isRtl ? containerRect.left : containerRect.right - expandedHoverWidth;
+			const markerRight = isRtl ? containerRect.left + expandedHoverWidth : containerRect.right;
+			if (clientX < markerLeft || clientX > markerRight) {
+				return undefined;
+			}
+		}
 
-		const candidates: Array<{ id: string; lane: string }> = [];
+		const candidates: Array<{ id: string; centerDistance: number }> = [];
 		for (const [id, marker] of this.markerById) {
-			// Use cached positions from the last renderMarkers pass (stored as
-			// pixel strings in style.top/style.height) to avoid forcing a
-			// synchronous layout read per marker during hit-testing.
 			const top = parseFloat(marker.style.top);
 			const height = parseFloat(marker.style.height);
 			if (Number.isNaN(top) || Number.isNaN(height)) {
@@ -533,19 +516,32 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			if (clientY < markerTop || clientY > markerBottom) {
 				continue;
 			}
-			const lane = marker.dataset.lane ?? 'full';
-			candidates.push({ id, lane });
+			const markerCenter = markerTop + (height / 2);
+			candidates.push({ id, centerDistance: Math.abs(clientY - markerCenter) });
 		}
 
 		if (candidates.length === 0) {
 			return undefined;
 		}
 
-		// Prefer right-lane (prompt) > left-lane > full-lane
-		const lanePriority: Record<string, number> = { right: 0, left: 1, full: 2 };
-		candidates.sort((a, b) => (lanePriority[a.lane] ?? 3) - (lanePriority[b.lane] ?? 3));
+		candidates.sort((a, b) => a.centerDistance - b.centerDistance);
 
 		return this.targetById.get(candidates[0].id);
+	}
+
+	private getExpandedHoverWidth(): number {
+		let expandedHoverWidth = MARKER_HOVER_INLINE_SIZE;
+		for (const marker of this.markerById.values()) {
+			const width = parseFloat(marker.style.width);
+			const hoverWidth = parseFloat(marker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'));
+			expandedHoverWidth = Math.max(
+				expandedHoverWidth,
+				Number.isNaN(width) ? 0 : width,
+				Number.isNaN(hoverWidth) ? 0 : hoverWidth,
+			);
+		}
+
+		return expandedHoverWidth + MARKER_HOVER_BOUNDS_MARGIN;
 	}
 
 	private getFocusedMarkerId(): string | undefined {
@@ -599,4 +595,28 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		};
 		this._focusRetryDisposable.value = this.scheduleFocusRetry(targetWindow, tryFocus);
 	}
+}
+
+function getPromptHoverWidthById(descriptors: ReadonlyArray<ReturnType<typeof getScrollbarPromptMarkerDescriptors>[number]>): Map<string, number> {
+	const promptDescriptors = descriptors.filter(descriptor => descriptor.markerType === 'prompt');
+	if (promptDescriptors.length === 0) {
+		return new Map();
+	}
+
+	const promptLengths = promptDescriptors.map(descriptor => descriptor.request.messageText.length);
+	const minPromptLength = Math.min(...promptLengths);
+	const maxPromptLength = Math.max(...promptLengths);
+	const promptLengthRange = Math.max(maxPromptLength - minPromptLength, 1);
+	const hoverWidthById = new Map<string, number>();
+
+	for (const descriptor of promptDescriptors) {
+		const normalizedLength = (descriptor.request.messageText.length - minPromptLength) / promptLengthRange;
+		const hoverWidth = Math.max(
+			MARKER_HOVER_INLINE_SIZE,
+			Math.round(MARKER_HOVER_INLINE_SIZE + (normalizedLength * (MAX_PROMPT_HOVER_INLINE_SIZE - MARKER_HOVER_INLINE_SIZE))),
+		);
+		hoverWidthById.set(descriptor.id, hoverWidth);
+	}
+
+	return hoverWidthById;
 }

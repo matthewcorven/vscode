@@ -7,7 +7,7 @@ import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../base/test/common/utils.js';
 import { ChatScrollbarPromptMarkerClickBehavior } from '../../../common/constants.js';
 import { IChatRequestViewModel, IChatResponseViewModel } from '../../../common/model/chatViewModel.js';
-import { applyScrollbarPromptMarkerClickBehavior, ChatScrollbarPromptMarkerLane, ChatScrollbarPromptMarkerType, getFocusedScrollbarPromptMarkerId, getFocusedScrollbarPromptMarkerRequestId, getScrollbarPromptMarkerDescriptors } from '../../../browser/actions/chatPromptNavigationActions.js';
+import { applyScrollbarPromptMarkerClickBehavior, ChatScrollbarPromptMarkerType, getFocusedScrollbarPromptMarkerId, getFocusedScrollbarPromptMarkerRequestId, getScrollbarPromptMarkerDescriptors } from '../../../browser/actions/chatPromptNavigationActions.js';
 
 suite('Chat scrollbar prompt marker helpers', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
@@ -89,7 +89,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		assert.deepStrictEqual(descriptors.map(d => d.request.id), ['request-2', 'request-4']);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors assigns taxonomy lanes and types', () => {
+	test('getScrollbarPromptMarkerDescriptors assigns taxonomy types and priorities', () => {
 		const items = [
 			request('request-1', 0, 'Can you help me?', 1),
 			response('request-1', { parts: [{ kind: 'questionCarousel', isUsed: false }] }),
@@ -106,17 +106,16 @@ suite('Chat scrollbar prompt marker helpers', () => {
 			id: descriptor.id,
 			targetId: descriptor.target.id,
 			markerType: descriptor.markerType,
-			lane: descriptor.lane,
 			priority: descriptor.priority,
 		})), [
-			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt, lane: ChatScrollbarPromptMarkerLane.Right, priority: 60 },
-			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.AskQuestion, lane: ChatScrollbarPromptMarkerLane.Left, priority: 70 },
-			{ id: 'request-2', targetId: 'request-2', markerType: ChatScrollbarPromptMarkerType.Prompt, lane: ChatScrollbarPromptMarkerLane.Right, priority: 60 },
-			{ id: 'request-2-response', targetId: 'request-2-response', markerType: ChatScrollbarPromptMarkerType.FileChange, lane: ChatScrollbarPromptMarkerLane.Full, priority: 80 },
-			{ id: 'request-3', targetId: 'request-3', markerType: ChatScrollbarPromptMarkerType.Compaction, lane: ChatScrollbarPromptMarkerLane.Full, priority: 90 },
-			{ id: 'request-4', targetId: 'request-4', markerType: ChatScrollbarPromptMarkerType.Prompt, lane: ChatScrollbarPromptMarkerLane.Right, priority: 60 },
-			{ id: 'request-4-response', targetId: 'request-4-response', markerType: ChatScrollbarPromptMarkerType.FileChange, lane: ChatScrollbarPromptMarkerLane.Full, priority: 80 },
-			{ id: 'request-5', targetId: 'request-5', markerType: ChatScrollbarPromptMarkerType.Prompt, lane: ChatScrollbarPromptMarkerLane.Right, priority: 60 },
+			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
+			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.AskQuestion, priority: 70 },
+			{ id: 'request-2', targetId: 'request-2', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
+			{ id: 'request-2-response', targetId: 'request-2-response', markerType: ChatScrollbarPromptMarkerType.FileChange, priority: 80 },
+			{ id: 'request-3', targetId: 'request-3', markerType: ChatScrollbarPromptMarkerType.Compaction, priority: 90 },
+			{ id: 'request-4', targetId: 'request-4', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
+			{ id: 'request-4-response', targetId: 'request-4-response', markerType: ChatScrollbarPromptMarkerType.FileChange, priority: 80 },
+			{ id: 'request-5', targetId: 'request-5', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
 		]);
 	});
 
@@ -132,7 +131,6 @@ suite('Chat scrollbar prompt marker helpers', () => {
 			{ id: 'request-6', markerType: ChatScrollbarPromptMarkerType.Prompt },
 			{ id: 'request-6-response', markerType: ChatScrollbarPromptMarkerType.Error },
 		]);
-		assert.strictEqual(descriptors[1].lane, ChatScrollbarPromptMarkerLane.Full);
 		assert.strictEqual(descriptors[1].priority, 100);
 	});
 
@@ -165,11 +163,10 @@ suite('Chat scrollbar prompt marker helpers', () => {
 			id: descriptor.id,
 			targetId: descriptor.target.id,
 			markerType: descriptor.markerType,
-			lane: descriptor.lane,
 		})), [
-			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt, lane: ChatScrollbarPromptMarkerLane.Right },
-			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.FileChange, lane: ChatScrollbarPromptMarkerLane.Full },
-			{ id: 'request-2', targetId: 'request-2', markerType: ChatScrollbarPromptMarkerType.Prompt, lane: ChatScrollbarPromptMarkerLane.Right },
+			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
+			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.FileChange },
+			{ id: 'request-2', targetId: 'request-2', markerType: ChatScrollbarPromptMarkerType.Prompt },
 		]);
 	});
 
@@ -216,18 +213,6 @@ suite('Chat scrollbar prompt marker helpers', () => {
 			'request-1-response#fileChange1',
 			'request-1-response#fileChange2',
 			'request-1-response#fileChange3',
-		]);
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.topRatio), [
-			0 / 14,
-			2 / 14,
-			4 / 14,
-			12 / 14,
-		]);
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.heightRatio), [
-			2 / 14,
-			2 / 14,
-			8 / 14,
-			2 / 14,
 		]);
 	});
 
@@ -406,7 +391,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), ['request-1-response']);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors computes topRatio and heightRatio with the 1/parts.length floor for multi-cluster responses', () => {
+	test('getScrollbarPromptMarkerDescriptors uses suffixed file-change ids for multi-cluster responses', () => {
 		const parts = [
 			{ kind: 'toolInvocationSerialized', toolId: 'copilot_createFile' },
 			{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
@@ -420,12 +405,13 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 		const fileChangeDescriptors = descriptors.filter(descriptor => descriptor.markerType === ChatScrollbarPromptMarkerType.FileChange);
 
-		// Each cluster spans 2 parts out of 4, so heightRatio = 2/4 = 0.5 (above the 1/4 floor)
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.topRatio), [0 / 4, 2 / 4]);
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.heightRatio), [2 / 4, 2 / 4]);
+		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), [
+			'request-1-response#fileChange0',
+			'request-1-response#fileChange1',
+		]);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors enforces the 1/parts.length floor on heightRatio for a single-part edit cluster', () => {
+	test('getScrollbarPromptMarkerDescriptors emits a single unsuffixed id for a single-part file-change cluster', () => {
 		const parts = [
 			{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
 		];
@@ -436,24 +422,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 		const fileChangeDescriptors = descriptors.filter(descriptor => descriptor.markerType === ChatScrollbarPromptMarkerType.FileChange);
 
-		// Single part: heightRatio = max(1/1, 1/1) = 1, topRatio = 0/1 = 0
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.topRatio), [0]);
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.heightRatio), [1]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors always sets minHeight to 4 on every emitted descriptor', () => {
-		const items = [
-			request('request-1', 0, 'hello', 1),
-			response('request-1', { parts: [{ kind: 'questionCarousel', isUsed: false }] }),
-			request('request-2', 0, 'compact', 2, { slashCommandName: 'compact' }),
-			request('request-3', 0, 'fail', 3),
-			response('request-3', { errorDetails: { message: 'boom' } as never }),
-			request('request-4', 0, 'edit', 4),
-			response('request-4', { parts: [{ kind: 'externalEdit' }] }),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-
-		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.minHeight), descriptors.map(() => 4));
+		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), ['request-1-response']);
 	});
 
 	test('getFocusedScrollbarPromptMarkerId returns the response id for a response, not the request id', () => {

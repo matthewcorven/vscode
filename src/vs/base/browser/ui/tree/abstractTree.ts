@@ -2819,22 +2819,6 @@ export abstract class AbstractTree<T, TFilterData, TRef> implements IDisposable 
 		return this.view.scrollHeight;
 	}
 
-	getElementTop(element: TRef): number {
-		const index = this.model.getListIndex(element);
-		if (index === -1) {
-			return 0;
-		}
-		return this.view.getElementTop(index);
-	}
-
-	getElementHeight(element: TRef): number {
-		const index = this.model.getListIndex(element);
-		if (index === -1) {
-			return 0;
-		}
-		return this.view.getElementHeight(index);
-	}
-
 	get renderHeight(): number {
 		return this.view.renderHeight;
 	}
@@ -3129,6 +3113,23 @@ export abstract class AbstractTree<T, TFilterData, TRef> implements IDisposable 
 
 		const stickyScrollNode = this.stickyScrollController?.getNode(this.getNode(location));
 		return this.view.getRelativeTop(index, stickyScrollNode?.position ?? this.stickyScrollController?.height);
+	}
+
+	isElementInViewport(location: TRef): boolean {
+		const index = this.model.getListIndex(location);
+
+		if (index === -1) {
+			return false;
+		}
+
+		const stickyScrollNode = this.stickyScrollController?.getNode(this.getNode(location));
+		const paddingTop = stickyScrollNode?.position ?? this.stickyScrollController?.height ?? 0;
+		const viewportTop = this.view.scrollTop + paddingTop;
+		const viewportBottom = this.view.scrollTop + this.view.renderHeight;
+		const elementTop = this.view.getElementTop(index);
+		const elementBottom = elementTop + this.view.getElementHeight(index);
+
+		return elementBottom >= viewportTop && elementTop <= viewportBottom;
 	}
 
 	getViewState(identityProvider = this.options.identityProvider): AbstractTreeViewState {

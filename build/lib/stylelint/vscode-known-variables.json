@@ -960,6 +960,7 @@
 		"--chat-current-response-min-height",
 		"--chat-smooth-delay",
 		"--chat-smooth-duration",
+		"--chat-scrollbar-prompt-marker-hover-width",
 		"--inline-chat-frame-progress",
 		"--insert-border-color",
 		"--last-tab-margin-right",

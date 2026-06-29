@@ -4484,7 +4484,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 }
 
 .chat-scrollbar-prompt-markers {
-	overflow: hidden;
+	overflow: visible;
 	/* Scrollbar .visible layer uses z-index 11; keep markers above it so marker clicks are not swallowed by the scrollbar. */
 	/* The container itself is non-interactive (pointer-events: none is set inline by the controller); only the child marker elements receive pointer events. */
 	z-index: 12;
@@ -4493,70 +4493,105 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker {
 	position: absolute;
 	box-sizing: border-box;
-	left: 0;
-	right: 0;
-	min-height: var(--vscode-spacing-size40);
-	border-radius: 0;
-	background-color: var(--vscode-scrollbarSlider-background);
-	opacity: 0.85;
+	inline-size: var(--vscode-spacing-size60);
+	block-size: calc(var(--vscode-spacing-size120) + var(--vscode-spacing-size20));
+	border-radius: var(--vscode-cornerRadius-circle);
+	background-color: transparent;
+	opacity: 1;
 	pointer-events: auto;
 	transition: none;
 }
 
-.monaco-workbench.monaco-enable-motion .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker {
-	transition: top 0.05s ease-out, height 0.05s ease-out;
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before {
+	content: '';
+	position: absolute;
+	inset-inline-end: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	inline-size: 100%;
+	block-size: var(--vscode-spacing-size20);
+	border-radius: var(--vscode-cornerRadius-circle);
+	background-color: var(--vscode-scrollbarSlider-background);
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker:hover {
-	opacity: 1;
+.monaco-workbench.monaco-enable-motion .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before {
+	transition: inline-size 0.5s ease, block-size 0.5s ease, background-color 0.5s ease;
+}
+
+.chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker::before {
+	inline-size: var(--chat-scrollbar-prompt-marker-hover-width, var(--vscode-spacing-size160));
+}
+
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.in-viewport::before,
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.active::before {
+	block-size: 3px;
+}
+
+.chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker::before {
+	block-size: var(--vscode-spacing-size40);
 }
 
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.active {
-	opacity: 1;
 	outline: var(--vscode-strokeThickness) solid var(--vscode-contrastActiveBorder, var(--vscode-contrastBorder));
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-lane-left {
-	left: 0;
-	right: auto;
-	width: 50%;
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt::before {
+	background-color: #bcc0c5;
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-lane-right {
-	left: auto;
-	right: 0;
-	width: 50%;
+.vs-dark .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt::before,
+.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt::before {
+	background-color: #30353d;
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-lane-full {
-	left: 0;
-	right: 0;
-	width: auto;
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
+.chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before {
+	background-color: #59636e;
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt {
-	background-color: var(--vscode-charts-purple, #a371f7);
+.vs-dark .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
+.vs-dark .chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
+.vs-dark .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before,
+.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
+.hc-black .chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
+.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before {
+	background-color: #656c76;
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-askQuestion {
-	background-color: var(--vscode-charts-yellow, #e5c07b);
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-askQuestion::before {
+	background-color: var(--vscode-charts-purple, #e5e57b);
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-fileChange {
-	background-color: var(--vscode-charts-green, #3fb950);
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-fileChange::before {
+	background-color: var(--vscode-charts-blue, #5AA4FA);
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-compaction {
-	background-color: var(--vscode-charts-yellow, #e5c07b);
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-compaction::before {
+	background-color: var(--vscode-charts-orange, #eca625);
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-error {
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-error::before {
 	background-color: var(--vscode-charts-red, #f85149);
 }
 
 .hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker,
 .hc-light .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker {
+	background-color: transparent;
+	box-sizing: border-box;
+	outline-offset: -1px;
+	outline-color: transparent;
+	outline-style: solid;
+	outline-width: var(--vscode-strokeThickness);
+
+	/* Keep a visible HC edge around the hovered/clickable hitbox. */
 	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder);
+}
+
+.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before,
+.hc-light .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before {
+	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder);
+	box-sizing: border-box;
 }
 
 .monaco-reduce-motion .action-item.chat-restore-checkpoint-item.confirming .action-label:first-child {
