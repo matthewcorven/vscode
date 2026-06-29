@@ -580,6 +580,9 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		}
 
 		this.host.reveal(item);
+		if (this.host.hasElement(item)) {
+			this.host.focusItem(item);
+		}
 		const targetWindow = dom.getWindow(this.container);
 		let attempts = 0;
 		const maxAttempts = 10;
