@@ -4536,27 +4536,13 @@ have to be updated for changes to the rules above, or to support more deeply nes
 }
 
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt::before {
-	background-color: #bcc0c5;
-}
-
-.vs-dark .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt::before,
-.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt::before {
-	background-color: #30353d;
+	background-color: var(--vscode-scrollbarSlider-background);
 }
 
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
 .chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before {
-	background-color: #59636e;
-}
-
-.vs-dark .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
-.vs-dark .chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
-.vs-dark .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before,
-.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
-.hc-black .chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
-.hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before {
-	background-color: #656c76;
+	background-color: var(--vscode-scrollbarSlider-activeBackground);
 }
 
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-askQuestion::before {

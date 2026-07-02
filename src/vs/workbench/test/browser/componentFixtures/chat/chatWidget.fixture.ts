@@ -47,6 +47,7 @@ export interface IChatWidgetFixtureOptions {
 	readonly messages: ReadonlyArray<IFixtureMessage>;
 	readonly width?: number;
 	readonly height?: number;
+	readonly scrollbarPromptMarkersEnabled?: boolean;
 	/**
 	 * When `false`, registers a stub `IChatToolRiskAssessmentService` whose
 	 * `isEnabled()` returns `false`, exercising the "feature off" code path.
@@ -277,6 +278,7 @@ export async function renderChatWidget(context: ComponentFixtureContext, options
 			currentChatMode: () => ChatModeKind.Agent,
 			defaultElementHeight: 120,
 			renderStyle: 'compact',
+			scrollbarPromptMarkersEnabled: options.scrollbarPromptMarkersEnabled,
 			styles: {
 				listForeground: 'var(--vscode-foreground)',
 				listBackground: 'var(--vscode-editor-background)',
@@ -373,10 +375,50 @@ const MULTI_TURN: IFixtureMessage[] = [
 	},
 ];
 
+const SCROLLBAR_PROMPT_MARKERS: IFixtureMessage[] = [
+	{
+		user: 'Summarize the workspace layout.',
+		assistant: [
+			{ kind: 'markdown', text: 'The workspace is organized into source, build, extension, and test folders.' },
+		],
+	},
+	{
+		user: 'Find the chat widget entrypoint.',
+		assistant: [
+			{ kind: 'markdown', text: 'The chat widget entrypoint is in `src/vs/workbench/contrib/chat/browser/widget/chatWidget.ts`.' },
+		],
+	},
+	{
+		user: 'List the marker types that appear in chat.',
+		assistant: [
+			{ kind: 'markdown', text: 'Prompt, question, file change, compaction, and error markers are supported.' },
+		],
+	},
+	{
+		user: 'Show the newest prompt near the composer.',
+		assistant: [
+			{ kind: 'markdown', text: 'The newest prompt can align near the composer when it is revealed from the scrollbar.' },
+		],
+	},
+	{
+		user: 'Track the visible prompt while I scroll.',
+		assistant: [
+			{ kind: 'markdown', text: 'The active marker can follow the prompt nearest the middle of the viewport.' },
+		],
+	},
+	{
+		user: 'Preview the hovered prompt.',
+		assistant: [
+			{ kind: 'markdown', text: 'A preview surface can summarize the prompt and show its time.' },
+		],
+	},
+];
+
 export default defineThemedFixtureGroup({ path: 'chat/widget/' }, {
 	SimpleQA: defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: SIMPLE_QA }) }),
 	Streaming: defineComponentFixture({ labels: { kind: 'animated' }, render: ctx => renderChatWidget(ctx, { messages: STREAMING }) }),
 	PendingToolApproval: defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: PENDING_TOOL_APPROVAL }) }),
+	ScrollbarPromptMarkers: defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: SCROLLBAR_PROMPT_MARKERS, height: 520, scrollbarPromptMarkersEnabled: true }) }),
 	bugs: defineThemedFixtureGroup({
 		'issue-309796-missing-backslash': defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: ISSUE_309796_MISSING_BACKSLASH }) }),
 	}),
