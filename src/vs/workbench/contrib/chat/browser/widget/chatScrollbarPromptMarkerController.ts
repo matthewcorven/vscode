@@ -27,6 +27,7 @@ import { ChatTreeItem } from '../chat.js';
 import {
 	applyScrollbarPromptMarkerClickBehavior,
 	getFocusedScrollbarPromptMarkerId,
+	type IChatScrollbarPromptMarkerDescriptor,
 	getScrollbarPromptMarkerDescriptors,
 } from '../actions/chatPromptNavigationActions.js';
 
@@ -70,10 +71,7 @@ const MARKER_GUTTER_INLINE_SIZE = 'calc((var(--vscode-spacing-size160) * 2) + va
 export class ChatScrollbarPromptMarkerController extends Disposable {
 	private readonly container = document.createElement('div');
 	private readonly markerById = new Map<string, HTMLElement>();
-	private readonly targetById = new Map<
-		string,
-		IChatRequestViewModel | IChatResponseViewModel
-	>();
+	private readonly descriptorById = new Map<string, IChatScrollbarPromptMarkerDescriptor>();
 	private readonly parentPointerDownListener = this._register(
 		new MutableDisposable(),
 	);
@@ -97,6 +95,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private enabled = true;
 	private markerActivated = false;
 	private suppressNextClick = false;
+	private lastDescriptorId: string | undefined;
 	private readonly _focusRetryDisposable = this._register(new MutableDisposable());
 	private readonly _clickSuppressionDisposable = this._register(new MutableDisposable());
 
@@ -306,7 +305,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private clearMarkers(): void {
 		for (const [, marker] of this.markerById) { marker.remove(); }
 		this.markerById.clear();
-		this.targetById.clear();
+		this.descriptorById.clear();
+		this.lastDescriptorId = undefined;
 		this.resetHoverState();
 	}
 
@@ -332,7 +332,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		if (rulerHeight <= 0) {
 			for (const [, marker] of this.markerById) { marker.remove(); }
 			this.markerById.clear();
-			this.targetById.clear();
+			this.descriptorById.clear();
+			this.lastDescriptorId = undefined;
 			this.updateContainerVisibility();
 			return;
 		}
@@ -357,7 +358,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		const promptHoverWidthById = getPromptHoverWidthById(descriptors);
 
 		const nextMarkerById = new Map<string, HTMLElement>();
-		const nextTargetById = new Map<string, IChatRequestViewModel | IChatResponseViewModel>();
+		const nextDescriptorById = new Map<string, IChatScrollbarPromptMarkerDescriptor>();
 
 		for (const [index, descriptor] of descriptors.entries()) {
 			const top = Math.round(stackTop + (index * stackStride));
@@ -389,7 +390,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			marker.classList.toggle('in-viewport', this.host.isElementInViewport(descriptor.target));
 
 			nextMarkerById.set(descriptor.id, marker);
-			nextTargetById.set(descriptor.id, descriptor.target);
+			nextDescriptorById.set(descriptor.id, descriptor);
 		}
 
 		// Remove stale markers that are no longer present
@@ -403,10 +404,11 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		for (const [id, marker] of nextMarkerById) {
 			this.markerById.set(id, marker);
 		}
-		this.targetById.clear();
-		for (const [id, target] of nextTargetById) {
-			this.targetById.set(id, target);
+		this.descriptorById.clear();
+		for (const [id, descriptor] of nextDescriptorById) {
+			this.descriptorById.set(id, descriptor);
 		}
+		this.lastDescriptorId = descriptors.at(-1)?.id;
 		this.updateContainerVisibility();
 	}
 
@@ -486,7 +488,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		clientX: number,
 		clientY: number,
 		useExpandedHoverBounds = false,
-	): IChatRequestViewModel | IChatResponseViewModel | undefined {
+	): IChatScrollbarPromptMarkerDescriptor | undefined {
 		if (!this.visible || this.container.style.display === 'none') {
 			return undefined;
 		}
@@ -533,7 +535,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 
 		candidates.sort((a, b) => a.centerDistance - b.centerDistance);
 
-		return this.targetById.get(candidates[0].id);
+		return this.descriptorById.get(candidates[0].id);
 	}
 
 	private getExpandedHoverWidth(): number {
@@ -568,11 +570,21 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	 * the target element is available in the tree or a maximum attempt count
 	 * is reached.
 	 */
-	private revealItem(item: IChatRequestViewModel | IChatResponseViewModel): void {
+	private revealItem(descriptor: IChatScrollbarPromptMarkerDescriptor): void {
+		const item = descriptor.target;
 		const behavior =
 			this.configurationService.getValue<ChatScrollbarPromptMarkerClickBehavior>(
 				ChatConfiguration.ScrollbarPromptMarkerClickBehavior,
 			);
+		const isInViewport = this.host.isElementInViewport(item);
+		const isLastDescriptor = descriptor.id === this.lastDescriptorId;
+
+		if (isInViewport) {
+			if (behavior === ChatScrollbarPromptMarkerClickBehavior.RevealAndFocus && this.host.hasElement(item)) {
+				this.host.focusItem(item);
+			}
+			return;
+		}
 
 		// For the Reveal behavior, delegate entirely to the shared helper so
 		// there is a single source of truth for click behavior. For
@@ -582,11 +594,11 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		// cycle. The focus is retried across animation frames until the target
 		// element is available in the tree or a maximum attempt count is reached.
 		if (behavior === ChatScrollbarPromptMarkerClickBehavior.Reveal) {
-			applyScrollbarPromptMarkerClickBehavior(this.host, item, behavior);
+			this.host.reveal(item, isLastDescriptor ? 0.95 : undefined);
 			return;
 		}
 
-		this.host.reveal(item);
+		this.host.reveal(item, isLastDescriptor ? 0.95 : undefined);
 		if (this.host.hasElement(item)) {
 			this.host.focusItem(item);
 		}

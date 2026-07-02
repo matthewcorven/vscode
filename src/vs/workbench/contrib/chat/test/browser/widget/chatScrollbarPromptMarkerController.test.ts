@@ -624,7 +624,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			});
 
 			const target = controller['getTargetAtPoint'](0, getMarkerMidpointY(controller, 'r1'));
-			assert.strictEqual(target, req);
+			assert.strictEqual(target?.target, req);
 		});
 
 		test('returns undefined for a click outside the container bounds', () => {
@@ -699,9 +699,9 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const markerCenter = getMarkerMidpointY(controller, 'r1');
 			const responseCenter = getMarkerMidpointY(controller, 'r1-response');
 			const target = controller['getTargetAtPoint'](7, markerCenter + 0.1);
-			assert.strictEqual(target, req);
+			assert.strictEqual(target?.target, req);
 			const responseTarget = controller['getTargetAtPoint'](7, responseCenter - 0.1);
-			assert.strictEqual(responseTarget, res);
+			assert.strictEqual(responseTarget?.target, res);
 		});
 	});
 
@@ -721,7 +721,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 
 			assert.strictEqual(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker').length, 1);
 			assert.strictEqual(controller['markerById'].size, 1);
-			assert.strictEqual(controller['targetById'].size, 1);
+			assert.strictEqual(controller['descriptorById'].size, 1);
 		});
 
 		test('renderHeight <= 0 clears all markers and hides the container', () => {
@@ -769,6 +769,12 @@ suite('ChatScrollbarPromptMarkerController', () => {
 	});
 
 	suite('revealItem', () => {
+		function getDescriptor(controller: ChatScrollbarPromptMarkerController, markerId: string) {
+			const descriptor = controller['descriptorById'].get(markerId);
+			assert.ok(descriptor, `expected descriptor ${markerId}`);
+			return descriptor!;
+		}
+
 		test('setVisible(false) cancels pending focus retries', () => runWithFakedTimers({ useFakeTimers: true }, async () => {
 			const req = makeRequest('r1');
 			const layoutInfo = makeLayoutInfo(14);
@@ -776,6 +782,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const tops = new Map([['r1', 0]]);
 			const calls: string[] = [];
 			let hasElementAttempts = 0;
+			let allowRetryChecks = false;
 			const host = new class extends FakeHost {
 				constructor() {
 					super({ renderHeight: 200, scrollHeight: 200, items: [req], heights, tops, layoutInfo });
@@ -783,13 +790,18 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				override reveal() { calls.push('reveal'); }
 				override focusItem() { calls.push('focusItem'); }
 				override hasElement() {
+					if (!allowRetryChecks) {
+						return true;
+					}
 					hasElementAttempts++;
 					return hasElementAttempts > 1;
 				}
 			}();
 			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.RevealAndFocus);
+			controller.layout();
+			allowRetryChecks = true;
 
-			controller['revealItem'](req);
+			controller['revealItem'](getDescriptor(controller, 'r1'));
 			controller.setVisible(false);
 
 			await flushAnimationFrames();
@@ -804,6 +816,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const tops = new Map([['r1', 0]]);
 			const calls: string[] = [];
 			let hasElementAttempts = 0;
+			let allowRetryChecks = false;
 			const host = new class extends FakeHost {
 				constructor() {
 					super({ renderHeight: 200, scrollHeight: 200, items: [req], heights, tops, layoutInfo });
@@ -811,13 +824,18 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				override reveal() { calls.push('reveal'); }
 				override focusItem() { calls.push('focusItem'); }
 				override hasElement() {
+					if (!allowRetryChecks) {
+						return true;
+					}
 					hasElementAttempts++;
 					return hasElementAttempts > 1;
 				}
 			}();
 			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.RevealAndFocus);
+			controller.layout();
+			allowRetryChecks = true;
 
-			controller['revealItem'](req);
+			controller['revealItem'](getDescriptor(controller, 'r1'));
 			controller.setEnabled(false);
 
 			await flushAnimationFrames();
@@ -832,6 +850,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const tops = new Map([['r1', 0]]);
 			const calls: string[] = [];
 			let hasElementAttempts = 0;
+			let allowRetryChecks = false;
 			const host = new class extends FakeHost {
 				constructor() {
 					super({ renderHeight: 200, scrollHeight: 200, items: [req], heights, tops, layoutInfo });
@@ -839,13 +858,18 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				override reveal() { calls.push('reveal'); }
 				override focusItem() { calls.push('focusItem'); }
 				override hasElement() {
+					if (!allowRetryChecks) {
+						return true;
+					}
 					hasElementAttempts++;
 					return hasElementAttempts > 1;
 				}
 			}();
 			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.RevealAndFocus);
+			controller.layout();
+			allowRetryChecks = true;
 
-			controller['revealItem'](req);
+			controller['revealItem'](getDescriptor(controller, 'r1'));
 			controller.dispose();
 
 			await flushAnimationFrames();
@@ -867,8 +891,9 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				override focusItem() { calls.push('focusItem'); }
 			}();
 			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.Reveal);
+			controller.layout();
 
-			controller['revealItem'](req);
+			controller['revealItem'](getDescriptor(controller, 'r1'));
 
 			assert.deepStrictEqual(calls, ['reveal']);
 		});
@@ -880,6 +905,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const tops = new Map([['r1', 0]]);
 			const calls: string[] = [];
 			let hasElementCountdown = 1;
+			let allowRetryChecks = false;
 			const host = new class extends FakeHost {
 				constructor() {
 					super({ renderHeight: 200, scrollHeight: 200, items: [req], heights, tops, layoutInfo });
@@ -887,6 +913,9 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				override reveal() { calls.push('reveal'); }
 				override focusItem() { calls.push('focusItem'); }
 				override hasElement() {
+					if (!allowRetryChecks) {
+						return true;
+					}
 					if (hasElementCountdown > 0) {
 						hasElementCountdown--;
 						return false;
@@ -895,8 +924,10 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				}
 			}();
 			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.RevealAndFocus);
+			controller.layout();
+			allowRetryChecks = true;
 
-			controller['revealItem'](req);
+			controller['revealItem'](getDescriptor(controller, 'r1'));
 
 			// reveal is called immediately; focusItem is deferred to animation frames
 			assert.deepStrictEqual(calls, ['reveal']);
@@ -907,6 +938,47 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			// focusItem should have been called once after hasElement returned true
 			assert.ok(calls.includes('focusItem'), `expected focusItem to be called, got: ${JSON.stringify(calls)}`);
 			assert.strictEqual(calls.filter(c => c === 'focusItem').length, 1);
+		});
+
+		test('last descriptor reveals near the bottom when it is not already visible', () => {
+			const req1 = makeRequest('r1');
+			const req2 = makeRequest('r2');
+			const layoutInfo = makeLayoutInfo(14);
+			const calls: Array<{ id: string; relativeTop: number | undefined }> = [];
+			const host = new class extends FakeHost {
+				constructor() {
+					super({ renderHeight: 200, scrollHeight: 200, items: [req1, req2], layoutInfo });
+				}
+				override reveal(item: IChatRequestViewModel | IChatResponseViewModel, relativeTop?: number) {
+					calls.push({ id: item.id, relativeTop });
+				}
+			}();
+			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.Reveal);
+			controller.layout();
+
+			controller['revealItem'](getDescriptor(controller, 'r2'));
+
+			assert.deepStrictEqual(calls, [{ id: 'r2', relativeTop: 0.95 }]);
+		});
+
+		test('in-viewport targets do not reveal again but still focus when configured', () => {
+			const req = makeRequest('r1');
+			const layoutInfo = makeLayoutInfo(14);
+			const calls: string[] = [];
+			const viewportElements = new Set<IChatRequestViewModel | IChatResponseViewModel>([req]);
+			const host = new class extends FakeHost {
+				constructor() {
+					super({ renderHeight: 200, scrollHeight: 200, items: [req], layoutInfo, viewportElements });
+				}
+				override reveal() { calls.push('reveal'); }
+				override focusItem() { calls.push('focusItem'); }
+			}();
+			const controller = createController(host, ChatScrollbarPromptMarkerClickBehavior.RevealAndFocus);
+			controller.layout();
+
+			controller['revealItem'](getDescriptor(controller, 'r1'));
+
+			assert.deepStrictEqual(calls, ['focusItem']);
 		});
 	});
 
