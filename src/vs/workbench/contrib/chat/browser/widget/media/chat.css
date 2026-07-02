@@ -4606,6 +4606,11 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.monaco-reduce-motion .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before,
+.monaco-reduce-motion .chat-scrollbar-prompt-marker-preview {
+	transition: none;
+}
+
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.in-viewport::before,
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.active::before {
 	block-size: 3px;
@@ -4672,6 +4677,12 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .hc-black .chat-scrollbar-prompt-marker-preview,
 .hc-light .chat-scrollbar-prompt-marker-preview {
 	border-color: var(--vscode-contrastBorder);
+}
+
+.hc-black .chat-scrollbar-prompt-marker-preview-swatch,
+.hc-light .chat-scrollbar-prompt-marker-preview-swatch {
+	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder);
+	box-sizing: border-box;
 }
 
 .monaco-reduce-motion .action-item.chat-restore-checkpoint-item.confirming .action-label:first-child {
