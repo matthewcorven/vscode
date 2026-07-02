@@ -4509,7 +4509,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	inset-inline-end: 0;
 	top: 50%;
 	transform: translateY(-50%);
-	inline-size: calc(var(--chat-scrollbar-prompt-marker-hover-width, var(--vscode-spacing-size160)) + var(--vscode-spacing-size80));
+	inline-size: calc(var(--chat-scrollbar-prompt-marker-magnified-width, var(--vscode-spacing-size160)) + var(--vscode-spacing-size80));
 	block-size: var(--vscode-spacing-size120);
 	border-radius: var(--vscode-cornerRadius-medium);
 	background-color: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
@@ -4522,7 +4522,11 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	inset-inline-end: 0;
 	top: 50%;
 	transform: translateY(-50%);
-	inline-size: 100%;
+	inline-size: calc(
+		var(--chat-scrollbar-prompt-marker-resting-width, 100%)
+		+ ((3 - var(--chat-scrollbar-prompt-marker-hover-distance, 3)) / 3)
+		* (var(--chat-scrollbar-prompt-marker-magnified-width, var(--chat-scrollbar-prompt-marker-resting-width, 100%)) - var(--chat-scrollbar-prompt-marker-resting-width, 100%))
+	);
 	block-size: var(--vscode-spacing-size20);
 	border-radius: var(--vscode-cornerRadius-circle);
 	background-color: var(--vscode-scrollbarSlider-background);
@@ -4530,11 +4534,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 }
 
 .monaco-workbench.monaco-enable-motion .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before {
-	transition: inline-size 0.5s ease, block-size 0.5s ease, background-color 0.5s ease;
-}
-
-.chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker::before {
-	inline-size: var(--chat-scrollbar-prompt-marker-hover-width, var(--vscode-spacing-size160));
+	transition: inline-size 0.2s cubic-bezier(0.4, 0, 0.2, 1), block-size 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.in-viewport::before,

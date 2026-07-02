@@ -56,6 +56,7 @@ const MARKER_HITBOX_HEIGHT = (MARKER_HITBOX_PADDING * 2) + MARKER_RESTING_HEIGHT
 const MAX_PROMPT_HOVER_INLINE_SIZE = 32;
 const MARKER_HOVER_BOUNDS_MARGIN = 10;
 const MARKER_GUTTER_INLINE_SIZE = 'calc((var(--vscode-spacing-size160) * 2) + var(--vscode-spacing-size80))';
+const MAX_MARKER_HOVER_DISTANCE = 3;
 
 /**
  * Manages the lifecycle, layout, and interaction of scrollbar markers on the
@@ -73,6 +74,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private readonly container = document.createElement('div');
 	private readonly markerById = new Map<string, HTMLElement>();
 	private readonly descriptorById = new Map<string, IChatScrollbarPromptMarkerDescriptor>();
+	private markerOrderIds: string[] = [];
 	private readonly parentPointerDownListener = this._register(
 		new MutableDisposable(),
 	);
@@ -97,6 +99,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private markerActivated = false;
 	private suppressNextClick = false;
 	private lastDescriptorId: string | undefined;
+	private hoveredMarkerId: string | undefined;
 	private readonly _focusRetryDisposable = this._register(new MutableDisposable());
 	private readonly _clickSuppressionDisposable = this._register(new MutableDisposable());
 
@@ -307,16 +310,37 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		for (const [, marker] of this.markerById) { marker.remove(); }
 		this.markerById.clear();
 		this.descriptorById.clear();
+		this.markerOrderIds = [];
 		this.lastDescriptorId = undefined;
 		this.resetHoverState();
 	}
 
 	private resetHoverState(): void {
-		this.container.classList.remove('chat-scrollbar-prompt-markers-hover');
+		this.setHoveredMarkerId(undefined);
 	}
 
-	private setHoverState(hovered: boolean): void {
-		this.container.classList.toggle('chat-scrollbar-prompt-markers-hover', hovered);
+	private setHoveredMarkerId(hoveredMarkerId: string | undefined): void {
+		this.hoveredMarkerId = hoveredMarkerId;
+		this.container.classList.toggle('chat-scrollbar-prompt-markers-hover', !!hoveredMarkerId);
+		this.applyMarkerHoverState();
+	}
+
+	private applyMarkerHoverState(): void {
+		const hoveredIndex = this.hoveredMarkerId ? this.markerOrderIds.indexOf(this.hoveredMarkerId) : -1;
+
+		for (const [index, markerId] of this.markerOrderIds.entries()) {
+			const marker = this.markerById.get(markerId);
+			if (!marker) {
+				continue;
+			}
+
+			const hoverDistance = marker.classList.contains('active')
+				? 0
+				: hoveredIndex === -1
+					? MAX_MARKER_HOVER_DISTANCE
+					: Math.min(Math.abs(index - hoveredIndex), MAX_MARKER_HOVER_DISTANCE);
+			marker.style.setProperty('--chat-scrollbar-prompt-marker-hover-distance', String(hoverDistance));
+		}
 	}
 
 	private renderMarkers(): void {
@@ -382,7 +406,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			marker.style.height = `${hitboxHeight}px`;
 			marker.style.width = `${MARKER_INLINE_SIZE}px`;
 			marker.style.insetInlineEnd = '0';
-			marker.style.setProperty('--chat-scrollbar-prompt-marker-hover-width', `${promptHoverWidthById.get(descriptor.id) ?? MARKER_HOVER_INLINE_SIZE}px`);
+			marker.style.setProperty('--chat-scrollbar-prompt-marker-resting-width', `${promptHoverWidthById.get(descriptor.id) ?? MARKER_INLINE_SIZE}px`);
+			marker.style.setProperty('--chat-scrollbar-prompt-marker-magnified-width', `${MAX_PROMPT_HOVER_INLINE_SIZE}px`);
 			marker.style.zIndex = String(descriptor.priority);
 			marker.className = `chat-scrollbar-prompt-marker chat-scrollbar-prompt-marker-type-${descriptor.markerType}`;
 			marker.classList.toggle(
@@ -411,7 +436,12 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		for (const [id, descriptor] of nextDescriptorById) {
 			this.descriptorById.set(id, descriptor);
 		}
+		this.markerOrderIds = descriptors.map(descriptor => descriptor.id);
 		this.lastDescriptorId = descriptors.at(-1)?.id;
+		if (this.hoveredMarkerId && !this.descriptorById.has(this.hoveredMarkerId)) {
+			this.hoveredMarkerId = undefined;
+		}
+		this.applyMarkerHoverState();
 		this.updateContainerVisibility();
 	}
 
@@ -468,7 +498,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	}
 
 	private onOverviewRulerMouseMove(event: MouseEvent): void {
-		this.setHoverState(!!this.getTargetAtPoint(event.clientX, event.clientY, true));
+		this.setHoveredMarkerId(this.getClosestMarkerIdAtPoint(event.clientX, event.clientY, true));
 	}
 
 	private onOverviewRulerMouseOut(event: MouseEvent): void {
@@ -487,11 +517,11 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	 * When compressed stacks cause hitboxes to overlap, the marker whose center
 	 * is nearest to the click position wins.
 	 */
-	private getTargetAtPoint(
+	private getClosestMarkerIdAtPoint(
 		clientX: number,
 		clientY: number,
 		useExpandedHoverBounds = false,
-	): IChatScrollbarPromptMarkerDescriptor | undefined {
+	): string | undefined {
 		if (!this.visible || this.container.style.display === 'none') {
 			return undefined;
 		}
@@ -538,7 +568,16 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 
 		candidates.sort((a, b) => a.centerDistance - b.centerDistance);
 
-		return this.descriptorById.get(candidates[0].id);
+		return candidates[0].id;
+	}
+
+	private getTargetAtPoint(
+		clientX: number,
+		clientY: number,
+		useExpandedHoverBounds = false,
+	): IChatScrollbarPromptMarkerDescriptor | undefined {
+		const markerId = this.getClosestMarkerIdAtPoint(clientX, clientY, useExpandedHoverBounds);
+		return markerId ? this.descriptorById.get(markerId) : undefined;
 	}
 
 	private getExpandedHoverWidth(): number {

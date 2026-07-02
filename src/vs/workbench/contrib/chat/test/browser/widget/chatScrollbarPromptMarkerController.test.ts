@@ -319,7 +319,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			assert.strictEqual(askMarker.style.height, '14px');
 		});
 
-		test('prompt hover widths scale by prompt length while non-prompt markers keep the fixed hover width', () => {
+		test('prompt resting widths scale by prompt length while non-prompt markers keep the fixed resting width', () => {
 			const shortPrompt = makeRequest('short');
 			const longPrompt = {
 				...makeRequest('longer-prompt'),
@@ -341,9 +341,10 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const askMarker = controller['container'].querySelector('[data-marker-id="short-response"]') as HTMLElement;
 			const longMarker = controller['container'].querySelector('[data-marker-id="longer-prompt"]') as HTMLElement;
 
-			assert.strictEqual(shortMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '16px');
-			assert.strictEqual(askMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '16px');
-			assert.strictEqual(longMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '32px');
+			assert.strictEqual(shortMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-resting-width'), '16px');
+			assert.strictEqual(askMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-resting-width'), '6px');
+			assert.strictEqual(longMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-resting-width'), '32px');
+			assert.strictEqual(longMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-magnified-width'), '32px');
 		});
 
 		test('active class follows the visible prompt row id', () => {
@@ -473,7 +474,35 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			assert.strictEqual(controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker').length, 1);
 		});
 
-		test('moving over any marker hitbox toggles the shared hover class on the container', () => {
+		test('moving over a marker assigns localized hover distances around the nearest marker', () => {
+			const req1 = makeRequest('r1');
+			const req2 = makeRequest('r2');
+			const req3 = makeRequest('r3');
+			const layoutInfo = makeLayoutInfo(14);
+			const host = new FakeHost({
+				renderHeight: 200,
+				scrollHeight: 200,
+				items: [req1, req2, req3],
+				layoutInfo,
+			});
+			const controller = createController(host);
+
+			controller.layout();
+			controller['container'].getBoundingClientRect = () => ({
+				width: 14, height: 200, x: 0, y: 0,
+				left: 0, top: 0, right: 14, bottom: 200,
+				toJSON: () => ({}),
+			});
+
+			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r2') } as MouseEvent);
+
+			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
+			assert.strictEqual((controller['container'].querySelector('[data-marker-id="r1"]') as HTMLElement).style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-distance'), '1');
+			assert.strictEqual((controller['container'].querySelector('[data-marker-id="r2"]') as HTMLElement).style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-distance'), '0');
+			assert.strictEqual((controller['container'].querySelector('[data-marker-id="r3"]') as HTMLElement).style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-distance'), '1');
+		});
+
+		test('active markers stay pinned at full magnification when the pointer leaves the ruler', () => {
 			const req = makeRequest('r1');
 			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
 			const layoutInfo = makeLayoutInfo(14);
@@ -481,6 +510,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 				renderHeight: 200,
 				scrollHeight: 200,
 				items: [req, res],
+				visiblePromptRowId: 'r1',
 				layoutInfo,
 			});
 			const controller = createController(host);
@@ -495,15 +525,10 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
 			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
 
-			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r1-response') } as MouseEvent);
-			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
-
-			controller['onOverviewRulerMouseMove']({ clientX: -11, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
-			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
-			assert.strictEqual(controller['getTargetAtPoint'](-11, getMarkerMidpointY(controller, 'r1')), undefined);
-
 			controller['onOverviewRulerMouseMove']({ clientX: -13, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
 			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), false);
+			assert.strictEqual((controller['container'].querySelector('[data-marker-id="r1"]') as HTMLElement).style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-distance'), '0');
+			assert.strictEqual(controller['getTargetAtPoint'](-11, getMarkerMidpointY(controller, 'r1')), undefined);
 		});
 
 		test('a single marker is vertically centered using the fixed hitbox height', () => {
