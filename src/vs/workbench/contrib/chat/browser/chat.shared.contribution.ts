@@ -444,6 +444,13 @@ configurationRegistry.registerConfiguration({
 			default: false,
 			tags: ['experimental'],
 		},
+		[ChatConfiguration.ScrollbarPromptMarkersMaximum]: {
+			type: 'number',
+			minimum: 2,
+			description: nls.localize('chat.scrollbarPromptMarkers.maximumMarkers', "Controls the maximum number of chat scrollbar prompt markers shown in the Chat View transcript scrollbar before markers are downsampled."),
+			default: 30,
+			tags: ['experimental'],
+		},
 		[ChatConfiguration.ScrollbarPromptMarkerClickBehavior]: {
 			type: 'string',
 			enum: ['revealAndFocus', 'reveal'],

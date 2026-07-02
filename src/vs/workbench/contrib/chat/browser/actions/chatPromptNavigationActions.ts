@@ -106,6 +106,7 @@ export function getRequestViewModels(
  */
 export function getScrollbarPromptMarkerDescriptors(
 	items: readonly ChatPromptNavigationItem[],
+	maximumMarkers = Number.POSITIVE_INFINITY,
 ): IChatScrollbarPromptMarkerDescriptor[] {
 	const latestByDedupKey = new Map<string, IChatRequestViewModel>();
 	const responseByRequestId = new Map<string, IChatResponseViewModel>();
@@ -189,7 +190,27 @@ export function getScrollbarPromptMarkerDescriptors(
 		descriptors.push(...getResponseMarkerDescriptors(item, responseByRequestId.get(item.id)));
 	}
 
-	return descriptors;
+	return downsampleMarkerDescriptors(descriptors, maximumMarkers);
+}
+
+function downsampleMarkerDescriptors(
+	descriptors: readonly IChatScrollbarPromptMarkerDescriptor[],
+	maximumMarkers: number,
+): IChatScrollbarPromptMarkerDescriptor[] {
+	if (descriptors.length <= maximumMarkers || maximumMarkers < 2) {
+		return [...descriptors];
+	}
+
+	const lastIndex = descriptors.length - 1;
+	const selectedIndices = new Set<number>();
+	for (let slot = 0; slot < maximumMarkers; slot++) {
+		const index = slot === maximumMarkers - 1
+			? lastIndex
+			: Math.round((slot * lastIndex) / (maximumMarkers - 1));
+		selectedIndices.add(index);
+	}
+
+	return descriptors.filter((_, index) => selectedIndices.has(index));
 }
 
 /**

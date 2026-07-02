@@ -446,4 +446,33 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		applyScrollbarPromptMarkerClickBehavior(target, item, ChatScrollbarPromptMarkerClickBehavior.Reveal);
 		assert.deepStrictEqual(calls, ['reveal:request-1']);
 	});
+
+	test('getScrollbarPromptMarkerDescriptors downsample evenly when the marker count exceeds the maximum', () => {
+		const items = Array.from({ length: 6 }, (_, index) => request(`request-${index + 1}`, 0, `prompt-${index + 1}`, index + 1));
+		const descriptors = getScrollbarPromptMarkerDescriptors(items, 4);
+
+		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.id), [
+			'request-1',
+			'request-3',
+			'request-4',
+			'request-6',
+		]);
+	});
+
+	test('getScrollbarPromptMarkerDescriptors always keeps the first and last markers when downsampling mixed marker types', () => {
+		const items = [
+			request('request-1', 0, 'prompt-1', 1),
+			response('request-1', { parts: [{ kind: 'externalEdit' }] }),
+			request('request-2', 0, 'prompt-2', 2),
+			request('request-3', 0, 'prompt-3', 3),
+			response('request-3', { errorDetails: { message: 'boom' } as never }),
+		];
+		const descriptors = getScrollbarPromptMarkerDescriptors(items, 3);
+
+		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.id), [
+			'request-1',
+			'request-2',
+			'request-3-response',
+		]);
+	});
 });

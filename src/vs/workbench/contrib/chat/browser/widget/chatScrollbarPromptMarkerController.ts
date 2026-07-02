@@ -14,6 +14,8 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import {
 	ChatConfiguration,
 	ChatScrollbarPromptMarkerClickBehavior,
+	DEFAULT_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM,
+	MIN_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM,
 } from '../../common/constants.js';
 import {
 	IChatRequestViewModel,
@@ -337,6 +339,10 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 
 		const descriptors = getScrollbarPromptMarkerDescriptors(
 			this.host.getItems(),
+			Math.max(
+				MIN_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM,
+				this.configurationService.getValue<number>(ChatConfiguration.ScrollbarPromptMarkersMaximum) ?? DEFAULT_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM,
+			),
 		).filter((descriptor) => this.host.hasElement(descriptor.target));
 		const activeMarkerId = this.getFocusedMarkerId();
 		const hitboxHeight = Math.min(MARKER_HITBOX_HEIGHT, rulerHeight);

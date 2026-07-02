@@ -37,6 +37,7 @@ export enum ChatConfiguration {
 	EditRequests = 'chat.editRequests',
 	InlineReferencesStyle = 'chat.inlineReferences.style',
 	ScrollbarPromptMarkersEnabled = 'chat.scrollbarPromptMarkers.enabled',
+	ScrollbarPromptMarkersMaximum = 'chat.scrollbarPromptMarkers.maximumMarkers',
 	ScrollbarPromptMarkerClickBehavior = 'chat.scrollbarPromptMarkers.clickBehavior',
 	AutoReply = 'chat.autoReply',
 	GlobalAutoApprove = 'chat.tools.global.autoApprove',
@@ -188,6 +189,9 @@ export enum ChatScrollbarPromptMarkerClickBehavior {
 	RevealAndFocus = 'revealAndFocus',
 	Reveal = 'reveal',
 }
+
+export const DEFAULT_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM = 30;
+export const MIN_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM = 2;
 
 export type RawChatParticipantLocation = 'panel' | 'terminal' | 'notebook' | 'editing-session';
 

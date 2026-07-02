@@ -48,6 +48,7 @@ export interface IChatWidgetFixtureOptions {
 	readonly width?: number;
 	readonly height?: number;
 	readonly scrollbarPromptMarkersEnabled?: boolean;
+	readonly scrollbarPromptMarkersMaximum?: number;
 	/**
 	 * When `false`, registers a stub `IChatToolRiskAssessmentService` whose
 	 * `isEnabled()` returns `false`, exercising the "feature off" code path.
@@ -134,6 +135,9 @@ export async function renderChatWidget(context: ComponentFixtureContext, options
 	});
 	configService.setUserConfiguration('editor', { fontFamily: 'monospace', fontLigatures: false });
 	configService.setUserConfiguration(ChatConfiguration.ToolConfirmationCarousel, true);
+	if (typeof options.scrollbarPromptMarkersMaximum === 'number') {
+		configService.setUserConfiguration(ChatConfiguration.ScrollbarPromptMarkersMaximum, options.scrollbarPromptMarkersMaximum);
+	}
 
 	// Build a real ChatModel populated with hand-crafted requests/responses, then drive a
 	// real ChatViewModel + ChatListWidget — the same components used in production.
@@ -419,6 +423,7 @@ export default defineThemedFixtureGroup({ path: 'chat/widget/' }, {
 	Streaming: defineComponentFixture({ labels: { kind: 'animated' }, render: ctx => renderChatWidget(ctx, { messages: STREAMING }) }),
 	PendingToolApproval: defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: PENDING_TOOL_APPROVAL }) }),
 	ScrollbarPromptMarkers: defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: SCROLLBAR_PROMPT_MARKERS, height: 520, scrollbarPromptMarkersEnabled: true }) }),
+	ScrollbarPromptMarkersCapped: defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: SCROLLBAR_PROMPT_MARKERS, height: 520, scrollbarPromptMarkersEnabled: true, scrollbarPromptMarkersMaximum: 4 }) }),
 	bugs: defineThemedFixtureGroup({
 		'issue-309796-missing-backslash': defineComponentFixture({ render: ctx => renderChatWidget(ctx, { messages: ISSUE_309796_MISSING_BACKSLASH }) }),
 	}),
