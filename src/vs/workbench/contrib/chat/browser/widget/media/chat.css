@@ -4546,7 +4546,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	block-size: var(--vscode-spacing-size40);
 }
 
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.active {
+.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.focused {
 	outline: var(--vscode-strokeThickness) solid var(--vscode-contrastActiveBorder, var(--vscode-contrastBorder));
 }
 

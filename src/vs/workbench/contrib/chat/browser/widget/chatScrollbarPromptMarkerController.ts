@@ -40,6 +40,7 @@ export interface IChatScrollbarPromptMarkerHost {
 	readonly renderHeight: number;
 	getOverviewRulerLayoutInfo(): { parent: HTMLElement; insertBefore: HTMLElement } | undefined;
 	getItems(): ChatTreeItem[];
+	getVisiblePromptRowId(): string | undefined;
 	hasElement(element: ChatTreeItem): boolean;
 	isElementInViewport(element: ChatTreeItem): boolean;
 	getFocus(): ChatTreeItem[];
@@ -345,7 +346,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 				this.configurationService.getValue<number>(ChatConfiguration.ScrollbarPromptMarkersMaximum) ?? DEFAULT_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM,
 			),
 		).filter((descriptor) => this.host.hasElement(descriptor.target));
-		const activeMarkerId = this.getFocusedMarkerId();
+		const visiblePromptRowId = this.host.getVisiblePromptRowId();
+		const focusedMarkerId = this.getFocusedMarkerId();
 		const hitboxHeight = Math.min(MARKER_HITBOX_HEIGHT, rulerHeight);
 		const stackStride = descriptors.length <= 1
 			? 0
@@ -385,8 +387,9 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			marker.className = `chat-scrollbar-prompt-marker chat-scrollbar-prompt-marker-type-${descriptor.markerType}`;
 			marker.classList.toggle(
 				'active',
-				descriptor.target.id === activeMarkerId,
+				descriptor.request.id === visiblePromptRowId,
 			);
+			marker.classList.toggle('focused', descriptor.target.id === focusedMarkerId);
 			marker.classList.toggle('in-viewport', this.host.isElementInViewport(descriptor.target));
 
 			nextMarkerById.set(descriptor.id, marker);

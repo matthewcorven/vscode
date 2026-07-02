@@ -25,6 +25,7 @@ class FakeHost extends mock<IChatScrollbarPromptMarkerHost>() implements IChatSc
 	private _focus: (IChatRequestViewModel | IChatResponseViewModel)[] = [];
 	private _layoutInfo: { parent: HTMLElement; insertBefore: HTMLElement } | undefined;
 	private readonly _viewportElements: Set<IChatRequestViewModel | IChatResponseViewModel>;
+	private readonly _visiblePromptRowId: string | undefined;
 
 	constructor(opts: {
 		renderHeight: number;
@@ -34,6 +35,7 @@ class FakeHost extends mock<IChatScrollbarPromptMarkerHost>() implements IChatSc
 		tops?: Map<string, number>;
 		focus?: (IChatRequestViewModel | IChatResponseViewModel)[];
 		viewportElements?: Set<IChatRequestViewModel | IChatResponseViewModel>;
+		visiblePromptRowId?: string;
 		layoutInfo?: { parent: HTMLElement; insertBefore: HTMLElement };
 	}) {
 		super();
@@ -42,11 +44,13 @@ class FakeHost extends mock<IChatScrollbarPromptMarkerHost>() implements IChatSc
 		this._items = opts.items ?? [];
 		this._focus = opts.focus ?? [];
 		this._viewportElements = opts.viewportElements ?? new Set();
+		this._visiblePromptRowId = opts.visiblePromptRowId;
 		this._layoutInfo = opts.layoutInfo;
 	}
 
 	override getOverviewRulerLayoutInfo() { return this._layoutInfo; }
 	override getItems() { return this._items; }
+	override getVisiblePromptRowId() { return this._visiblePromptRowId; }
 	override hasElement(element: IChatRequestViewModel | IChatResponseViewModel) { return this._items.includes(element); }
 	override isElementInViewport(element: IChatRequestViewModel | IChatResponseViewModel) { return this._viewportElements.has(element); }
 	override getFocus() { return this._focus; }
@@ -342,7 +346,7 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			assert.strictEqual(longMarker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'), '32px');
 		});
 
-		test('active class toggles on the marker whose id matches the focused item', () => {
+		test('active class follows the visible prompt row id', () => {
 			const req = makeRequest('r1');
 			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
 			const layoutInfo = makeLayoutInfo(14);
@@ -351,15 +355,37 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			const host = new FakeHost({
 				renderHeight: 200, scrollHeight: 200,
 				items: [req, res], heights, tops, layoutInfo,
-				focus: [req],
+				visiblePromptRowId: 'r1',
 			});
 			const controller = createController(host);
 
 			controller.layout();
 			const markers = controller['container'].querySelectorAll('.chat-scrollbar-prompt-marker');
 			const promptMarker = Array.from(markers).find(m => (m as HTMLElement).dataset.markerId === 'r1') as HTMLElement;
+			const responseMarker = Array.from(markers).find(m => (m as HTMLElement).dataset.markerId === 'r1-response') as HTMLElement;
 
 			assert.strictEqual(promptMarker.classList.contains('active'), true);
+			assert.strictEqual(responseMarker.classList.contains('active'), true);
+		});
+
+		test('focused class follows the focused marker id independently of the active prompt row', () => {
+			const req = makeRequest('r1');
+			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
+			const layoutInfo = makeLayoutInfo(14);
+			const host = new FakeHost({
+				renderHeight: 200, scrollHeight: 200,
+				items: [req, res], layoutInfo,
+				visiblePromptRowId: 'r1',
+				focus: [res],
+			});
+			const controller = createController(host);
+
+			controller.layout();
+			const promptMarker = controller['container'].querySelector('[data-marker-id="r1"]') as HTMLElement;
+			const responseMarker = controller['container'].querySelector('[data-marker-id="r1-response"]') as HTMLElement;
+
+			assert.strictEqual(promptMarker.classList.contains('focused'), false);
+			assert.strictEqual(responseMarker.classList.contains('focused'), true);
 		});
 
 		test('in-viewport class follows whether the marker target intersects the chat viewport', () => {

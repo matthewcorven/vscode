@@ -804,6 +804,43 @@ export class ChatListWidget extends Disposable {
 		return items;
 	}
 
+	getVisiblePromptRowId(): string | undefined {
+		const promptItems = this.getItems().filter(isRequestVM);
+		let nearestVisiblePrompt: { id: string; distance: number } | undefined;
+		let nearestPrecedingPromptId: string | undefined;
+
+		for (const item of promptItems) {
+			if (!this._tree.hasElement(item)) {
+				continue;
+			}
+
+			const relativeTop = this._tree.getRelativeTop(item);
+			if (relativeTop === null) {
+				continue;
+			}
+
+			if (relativeTop < 0) {
+				nearestPrecedingPromptId = item.id;
+				continue;
+			}
+
+			if (relativeTop > 1) {
+				break;
+			}
+
+			const distance = Math.abs(relativeTop - 0.5);
+			if (!nearestVisiblePrompt || distance < nearestVisiblePrompt.distance) {
+				nearestVisiblePrompt = { id: item.id, distance };
+			}
+
+			if (relativeTop <= 0.5) {
+				nearestPrecedingPromptId = item.id;
+			}
+		}
+
+		return nearestVisiblePrompt?.id ?? nearestPrecedingPromptId;
+	}
+
 	/**
 	 * Delegate scroll events from a mouse wheel event to the tree.
 	 */
