@@ -4,12 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as dom from '../../../../../base/browser/dom.js';
+import { fromNow } from '../../../../../base/common/date.js';
 import {
 	Disposable,
 	IDisposable,
 	MutableDisposable,
 	toDisposable,
 } from '../../../../../base/common/lifecycle.js';
+import { localize } from '../../../../../nls.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import {
 	ChatConfiguration,
@@ -25,7 +27,6 @@ import {
 } from '../../common/model/chatViewModel.js';
 import { ChatTreeItem } from '../chat.js';
 import {
-	applyScrollbarPromptMarkerClickBehavior,
 	getFocusedScrollbarPromptMarkerId,
 	type IChatScrollbarPromptMarkerDescriptor,
 	getScrollbarPromptMarkerDescriptors,
@@ -57,6 +58,8 @@ const MAX_PROMPT_HOVER_INLINE_SIZE = 32;
 const MARKER_HOVER_BOUNDS_MARGIN = 10;
 const MARKER_GUTTER_INLINE_SIZE = 'calc((var(--vscode-spacing-size160) * 2) + var(--vscode-spacing-size80))';
 const MAX_MARKER_HOVER_DISTANCE = 3;
+const MARKER_PREVIEW_CHAR_LIMIT = 120;
+const MARKER_PREVIEW_HIDE_DELAY = 120;
 
 /**
  * Manages the lifecycle, layout, and interaction of scrollbar markers on the
@@ -72,6 +75,12 @@ const MAX_MARKER_HOVER_DISTANCE = 3;
  */
 export class ChatScrollbarPromptMarkerController extends Disposable {
 	private readonly container = document.createElement('div');
+	private readonly preview = document.createElement('div');
+	private readonly previewTypeRow = document.createElement('div');
+	private readonly previewSwatch = document.createElement('span');
+	private readonly previewLabel = document.createElement('span');
+	private readonly previewText = document.createElement('div');
+	private readonly previewTime = document.createElement('div');
 	private readonly markerById = new Map<string, HTMLElement>();
 	private readonly descriptorById = new Map<string, IChatScrollbarPromptMarkerDescriptor>();
 	private markerOrderIds: string[] = [];
@@ -100,6 +109,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private suppressNextClick = false;
 	private lastDescriptorId: string | undefined;
 	private hoveredMarkerId: string | undefined;
+	private previewPointerOver = false;
+	private readonly previewHideDisposable = this._register(new MutableDisposable());
 	private readonly _focusRetryDisposable = this._register(new MutableDisposable());
 	private readonly _clickSuppressionDisposable = this._register(new MutableDisposable());
 
@@ -112,20 +123,42 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		this._register(
 			toDisposable(() => {
 				this.cancelPendingFocusRetries();
+				this.previewHideDisposable.clear();
 				this.container.remove();
+				this.preview.remove();
 			}),
 		);
 		this.container.classList.add('chat-scrollbar-prompt-markers');
+		this.preview.classList.add('chat-scrollbar-prompt-marker-preview');
+		this.previewTypeRow.classList.add('chat-scrollbar-prompt-marker-preview-type');
+		this.previewSwatch.classList.add('chat-scrollbar-prompt-marker-preview-swatch');
+		this.previewLabel.classList.add('chat-scrollbar-prompt-marker-preview-label');
+		this.previewText.classList.add('chat-scrollbar-prompt-marker-preview-text');
+		this.previewTime.classList.add('chat-scrollbar-prompt-marker-preview-time');
+		this.previewTypeRow.append(this.previewSwatch, this.previewLabel);
+		this.preview.append(this.previewTypeRow, this.previewText, this.previewTime);
 		// The marker overlay is a mouse-only visual aid. It is hidden from the
 		// accessibility tree because it has no keyboard interaction path.
 		// Keyboard users can navigate prompts via the Next/Previous User Prompt
 		// commands, which are documented in the chat accessibility help dialog.
 		this.container.setAttribute('aria-hidden', 'true');
+		this.preview.setAttribute('aria-hidden', 'true');
 		this.container.style.position = 'absolute';
 		this.container.style.top = '0';
 		this.container.style.bottom = '0';
 		this.container.style.pointerEvents = 'none';
 		this.container.style.display = 'none';
+		this.preview.style.position = 'absolute';
+		this.preview.style.display = 'none';
+		this.preview.style.pointerEvents = 'auto';
+		this._register(dom.addDisposableListener(this.preview, dom.EventType.MOUSE_ENTER, () => {
+			this.previewPointerOver = true;
+			this.previewHideDisposable.clear();
+		}));
+		this._register(dom.addDisposableListener(this.preview, dom.EventType.MOUSE_LEAVE, () => {
+			this.previewPointerOver = false;
+			this.schedulePreviewHide();
+		}));
 	}
 
 	setVisible(visible: boolean): void {
@@ -134,6 +167,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			this.resetHoverState();
 			this.resetGestureState();
 			this.cancelPendingFocusRetries();
+			this.hidePreview();
 		}
 		this.updateContainerVisibility();
 	}
@@ -153,6 +187,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			this.resetHoverState();
 			this.resetGestureState();
 			this.cancelPendingFocusRetries();
+			this.hidePreview();
 			this.clearMarkers();
 			// Fully detach the overlay and dispose the capture listeners on the
 			// overview-ruler parent so the feature is a true no-op when disabled.
@@ -181,6 +216,9 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		) {
 			layoutInfo.parent.insertBefore(this.container, layoutInfo.insertBefore);
 		}
+		if (this.preview.parentElement !== layoutInfo.parent) {
+			layoutInfo.parent.appendChild(this.preview);
+		}
 
 		const scrollbarWidth = Math.max(
 			0,
@@ -189,6 +227,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		this.container.style.insetInlineEnd = `${scrollbarWidth}px`;
 		this.container.style.height = `${this.host.renderHeight}px`;
 		this.container.style.width = MARKER_GUTTER_INLINE_SIZE;
+		this.preview.style.insetInlineEnd = `calc(${scrollbarWidth}px + ${MARKER_GUTTER_INLINE_SIZE} + var(--vscode-spacing-size80))`;
 		if (this.pointerDownListenerParent !== layoutInfo.parent) {
 			this.pointerDownListenerParent = layoutInfo.parent;
 			this.parentPointerDownListener.value = dom.addDisposableListener(
@@ -239,6 +278,9 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	private updateContainerVisibility(): void {
 		const shouldShow = this.visible && this.enabled && this.host.renderHeight > 0;
 		this.container.style.display = shouldShow ? '' : 'none';
+		if (!shouldShow) {
+			this.hidePreview();
+		}
 	}
 
 	/**
@@ -317,6 +359,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 
 	private resetHoverState(): void {
 		this.setHoveredMarkerId(undefined);
+		this.hidePreview();
 	}
 
 	private setHoveredMarkerId(hoveredMarkerId: string | undefined): void {
@@ -341,6 +384,47 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 					: Math.min(Math.abs(index - hoveredIndex), MAX_MARKER_HOVER_DISTANCE);
 			marker.style.setProperty('--chat-scrollbar-prompt-marker-hover-distance', String(hoverDistance));
 		}
+	}
+
+	private showPreview(descriptor: IChatScrollbarPromptMarkerDescriptor): void {
+		const marker = this.markerById.get(descriptor.id);
+		if (!marker) {
+			return;
+		}
+
+		const markerTop = parseFloat(marker.style.top);
+		const markerHeight = parseFloat(marker.style.height);
+		if (Number.isNaN(markerTop) || Number.isNaN(markerHeight)) {
+			return;
+		}
+
+		const previewLabel = getPreviewLabel(descriptor.markerType);
+		const previewTimestamp = isResponseVM(descriptor.target) ? descriptor.target.timestamp : descriptor.request.timestamp;
+
+		this.previewHideDisposable.clear();
+		this.previewSwatch.dataset.markerType = descriptor.markerType;
+		this.previewLabel.textContent = previewLabel ?? '';
+		this.previewTypeRow.style.display = previewLabel ? 'flex' : 'none';
+		this.previewText.textContent = getPreviewText(descriptor.request.messageText);
+		this.previewTime.textContent = fromNow(previewTimestamp, true);
+		this.preview.style.top = `${markerTop + (markerHeight / 2)}px`;
+		this.preview.style.display = '';
+		this.preview.classList.add('visible');
+	}
+
+	private schedulePreviewHide(): void {
+		const handle = dom.getWindow(this.container).setTimeout(() => {
+			if (!this.previewPointerOver && !this.hoveredMarkerId) {
+				this.hidePreview();
+			}
+		}, MARKER_PREVIEW_HIDE_DELAY);
+		this.previewHideDisposable.value = toDisposable(() => clearTimeout(handle));
+	}
+
+	private hidePreview(): void {
+		this.previewHideDisposable.clear();
+		this.preview.classList.remove('visible');
+		this.preview.style.display = 'none';
 	}
 
 	private renderMarkers(): void {
@@ -498,7 +582,16 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 	}
 
 	private onOverviewRulerMouseMove(event: MouseEvent): void {
-		this.setHoveredMarkerId(this.getClosestMarkerIdAtPoint(event.clientX, event.clientY, true));
+		const hoveredMarkerId = this.getClosestMarkerIdAtPoint(event.clientX, event.clientY, true);
+		this.setHoveredMarkerId(hoveredMarkerId);
+		if (hoveredMarkerId) {
+			const descriptor = this.descriptorById.get(hoveredMarkerId);
+			if (descriptor) {
+				this.showPreview(descriptor);
+			}
+		} else if (!this.previewPointerOver) {
+			this.schedulePreviewHide();
+		}
 	}
 
 	private onOverviewRulerMouseOut(event: MouseEvent): void {
@@ -507,7 +600,10 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			return;
 		}
 
-		this.resetHoverState();
+		this.setHoveredMarkerId(undefined);
+		if (!this.previewPointerOver) {
+			this.schedulePreviewHide();
+		}
 	}
 
 	/**
@@ -584,7 +680,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		let expandedHoverWidth = MARKER_HOVER_INLINE_SIZE;
 		for (const marker of this.markerById.values()) {
 			const width = parseFloat(marker.style.width);
-			const hoverWidth = parseFloat(marker.style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-width'));
+			const hoverWidth = parseFloat(marker.style.getPropertyValue('--chat-scrollbar-prompt-marker-magnified-width'));
 			expandedHoverWidth = Math.max(
 				expandedHoverWidth,
 				Number.isNaN(width) ? 0 : width,
@@ -683,4 +779,26 @@ function getPromptHoverWidthById(descriptors: ReadonlyArray<ReturnType<typeof ge
 	}
 
 	return hoverWidthById;
+}
+
+function getPreviewText(messageText: string): string {
+	const firstLine = messageText.split(/\r?\n/, 1)[0] ?? '';
+	return firstLine.length > MARKER_PREVIEW_CHAR_LIMIT
+		? `${firstLine.slice(0, MARKER_PREVIEW_CHAR_LIMIT - 1)}…`
+		: firstLine;
+}
+
+function getPreviewLabel(markerType: IChatScrollbarPromptMarkerDescriptor['markerType']): string | undefined {
+	switch (markerType) {
+		case 'askQuestion':
+			return localize('chat.scrollbarPromptMarkers.preview.askQuestion', 'Question');
+		case 'fileChange':
+			return localize('chat.scrollbarPromptMarkers.preview.fileChange', 'File Change');
+		case 'compaction':
+			return localize('chat.scrollbarPromptMarkers.preview.compaction', 'Compaction');
+		case 'error':
+			return localize('chat.scrollbarPromptMarkers.preview.error', 'Error');
+		default:
+			return undefined;
+	}
 }

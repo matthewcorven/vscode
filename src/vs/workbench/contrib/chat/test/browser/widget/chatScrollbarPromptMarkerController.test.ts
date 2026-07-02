@@ -108,6 +108,7 @@ function makeResponse(requestId: string, parts: unknown[] = []): IChatResponseVi
 		requestId,
 		replyFollowups: undefined,
 		errorDetails: undefined,
+		timestamp: 0,
 		result: undefined,
 		contentUpdateTimings: undefined,
 		confirmationAdjustedTimestamp: undefined as never,
@@ -525,10 +526,36 @@ suite('ChatScrollbarPromptMarkerController', () => {
 			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
 			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), true);
 
-			controller['onOverviewRulerMouseMove']({ clientX: -13, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
+			controller['onOverviewRulerMouseMove']({ clientX: -60, clientY: getMarkerMidpointY(controller, 'r1') } as MouseEvent);
 			assert.strictEqual(controller['container'].classList.contains('chat-scrollbar-prompt-markers-hover'), false);
 			assert.strictEqual((controller['container'].querySelector('[data-marker-id="r1"]') as HTMLElement).style.getPropertyValue('--chat-scrollbar-prompt-marker-hover-distance'), '0');
 			assert.strictEqual(controller['getTargetAtPoint'](-11, getMarkerMidpointY(controller, 'r1')), undefined);
+		});
+
+		test('hovering a response marker shows the preview with the marker label and prompt text', () => {
+			const req = makeRequest('r1');
+			const res = makeResponse('r1', [{ kind: 'externalEdit' }]);
+			const layoutInfo = makeLayoutInfo(14);
+			const host = new FakeHost({
+				renderHeight: 200,
+				scrollHeight: 200,
+				items: [req, res],
+				layoutInfo,
+			});
+			const controller = createController(host);
+
+			controller.layout();
+			controller['container'].getBoundingClientRect = () => ({
+				width: 14, height: 200, x: 0, y: 0,
+				left: 0, top: 0, right: 14, bottom: 200,
+				toJSON: () => ({}),
+			});
+
+			controller['onOverviewRulerMouseMove']({ clientX: 7, clientY: getMarkerMidpointY(controller, 'r1-response') } as MouseEvent);
+
+			assert.strictEqual(controller['preview'].style.display, '');
+			assert.strictEqual(controller['previewLabel'].textContent, 'File Change');
+			assert.strictEqual(controller['previewText'].textContent, 'r1');
 		});
 
 		test('a single marker is vertically centered using the fixed hitbox height', () => {

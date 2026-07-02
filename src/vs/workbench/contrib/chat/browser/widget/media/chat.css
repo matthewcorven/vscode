@@ -4491,6 +4491,71 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	z-index: 12;
 }
 
+.chat-scrollbar-prompt-marker-preview {
+	max-inline-size: 280px;
+	padding: var(--vscode-spacing-size80) var(--vscode-spacing-size120);
+	border: var(--vscode-strokeThickness) solid var(--vscode-editorHoverWidget-border);
+	border-radius: var(--vscode-cornerRadius-medium);
+	background-color: var(--vscode-editorHoverWidget-background);
+	color: var(--vscode-editorHoverWidget-foreground);
+	box-shadow: var(--vscode-widget-shadow);
+	opacity: 0;
+	transform: translateY(-50%) translateX(var(--vscode-spacing-size80));
+	z-index: 13;
+}
+
+.chat-scrollbar-prompt-marker-preview.visible {
+	opacity: 1;
+	transform: translateY(-50%) translateX(0);
+}
+
+.chat-scrollbar-prompt-marker-preview-type {
+	display: flex;
+	align-items: center;
+	gap: var(--vscode-spacing-size80);
+	margin-bottom: var(--vscode-spacing-size80);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.chat-scrollbar-prompt-marker-preview-swatch {
+	inline-size: var(--vscode-spacing-size80);
+	block-size: var(--vscode-spacing-size80);
+	border-radius: var(--vscode-cornerRadius-circle);
+	background-color: var(--vscode-scrollbarSlider-background);
+	flex: 0 0 auto;
+}
+
+.chat-scrollbar-prompt-marker-preview-text {
+	font-size: 12px;
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.chat-scrollbar-prompt-marker-preview-time {
+	margin-top: var(--vscode-spacing-size80);
+	font-size: 11px;
+	opacity: 0.8;
+}
+
+.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='askQuestion'] {
+	background-color: var(--vscode-charts-purple, #e5e57b);
+}
+
+.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='fileChange'] {
+	background-color: var(--vscode-charts-blue, #5AA4FA);
+}
+
+.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='compaction'] {
+	background-color: var(--vscode-charts-orange, #eca625);
+}
+
+.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='error'] {
+	background-color: var(--vscode-charts-red, #f85149);
+}
+
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker {
 	position: absolute;
 	box-sizing: border-box;
@@ -4535,6 +4600,10 @@ have to be updated for changes to the rules above, or to support more deeply nes
 
 .monaco-workbench.monaco-enable-motion .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before {
 	transition: inline-size 0.2s cubic-bezier(0.4, 0, 0.2, 1), block-size 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.monaco-workbench.monaco-enable-motion .chat-scrollbar-prompt-marker-preview {
+	transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.in-viewport::before,
@@ -4598,6 +4667,11 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::after,
 .hc-light .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::after {
 	background-color: var(--vscode-contrastBorder);
+}
+
+.hc-black .chat-scrollbar-prompt-marker-preview,
+.hc-light .chat-scrollbar-prompt-marker-preview {
+	border-color: var(--vscode-contrastBorder);
 }
 
 .monaco-reduce-motion .action-item.chat-restore-checkpoint-item.confirming .action-label:first-child {
