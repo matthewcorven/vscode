@@ -51,6 +51,7 @@ const MARKER_RESTING_HEIGHT = 2;
 const MARKER_HITBOX_HEIGHT = (MARKER_HITBOX_PADDING * 2) + MARKER_RESTING_HEIGHT;
 const MAX_PROMPT_HOVER_INLINE_SIZE = 32;
 const MARKER_HOVER_BOUNDS_MARGIN = 10;
+const MARKER_GUTTER_INLINE_SIZE = 'calc((var(--vscode-spacing-size160) * 2) + var(--vscode-spacing-size80))';
 
 /**
  * Manages the lifecycle, layout, and interaction of scrollbar markers on the
@@ -180,9 +181,9 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			0,
 			Math.round(layoutInfo.insertBefore.getBoundingClientRect().width),
 		);
-		this.container.style.right = '0';
+		this.container.style.insetInlineEnd = `${scrollbarWidth}px`;
 		this.container.style.height = `${this.host.renderHeight}px`;
-		this.container.style.width = `${scrollbarWidth}px`;
+		this.container.style.width = MARKER_GUTTER_INLINE_SIZE;
 		if (this.pointerDownListenerParent !== layoutInfo.parent) {
 			this.pointerDownListenerParent = layoutInfo.parent;
 			this.parentPointerDownListener.value = dom.addDisposableListener(

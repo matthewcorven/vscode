@@ -180,7 +180,8 @@ suite('ChatScrollbarPromptMarkerController', () => {
 
 			assert.strictEqual(controller['container'].parentElement, layoutInfo.parent);
 			assert.strictEqual(controller['container'].style.height, '200px');
-			assert.strictEqual(controller['container'].style.width, '14px');
+			assert.strictEqual(controller['container'].style.width, 'calc((var(--vscode-spacing-size160) * 2) + var(--vscode-spacing-size80))');
+			assert.strictEqual(controller['container'].style.insetInlineEnd, '14px');
 		});
 
 		test('re-attaches parent listeners when the overview ruler parent changes', () => {
