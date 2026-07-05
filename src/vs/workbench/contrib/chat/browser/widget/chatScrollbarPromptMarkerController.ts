@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as dom from '../../../../../base/browser/dom.js';
-import { fromNow } from '../../../../../base/common/date.js';
+import { safeIntl } from '../../../../../base/common/date.js';
 import {
 	Disposable,
 	IDisposable,
@@ -20,8 +20,6 @@ import {
 	MIN_CHAT_SCROLLBAR_PROMPT_MARKERS_MAXIMUM,
 } from '../../common/constants.js';
 import {
-	IChatRequestViewModel,
-	IChatResponseViewModel,
 	isRequestVM,
 	isResponseVM,
 } from '../../common/model/chatViewModel.js';
@@ -49,7 +47,7 @@ export interface IChatScrollbarPromptMarkerHost {
 	focusItem(item: ChatTreeItem): void;
 }
 
-const MARKER_INLINE_SIZE = 6;
+const MARKER_INLINE_SIZE = 8;
 const MARKER_HOVER_INLINE_SIZE = 16;
 const MARKER_HITBOX_PADDING = 6;
 const MARKER_RESTING_HEIGHT = 2;
@@ -60,6 +58,21 @@ const MARKER_GUTTER_INLINE_SIZE = 'calc((var(--vscode-spacing-size160) * 2) + va
 const MAX_MARKER_HOVER_DISTANCE = 3;
 const MARKER_PREVIEW_CHAR_LIMIT = 120;
 const MARKER_PREVIEW_HIDE_DELAY = 120;
+const markerPreviewTimestampFormatters = {
+	withYear: safeIntl.DateTimeFormat(undefined, {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+	}),
+	withoutYear: safeIntl.DateTimeFormat(undefined, {
+		month: 'short',
+		day: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+	}),
+};
 
 /**
  * Manages the lifecycle, layout, and interaction of scrollbar markers on the
@@ -377,11 +390,9 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 				continue;
 			}
 
-			const hoverDistance = marker.classList.contains('active')
-				? 0
-				: hoveredIndex === -1
-					? MAX_MARKER_HOVER_DISTANCE
-					: Math.min(Math.abs(index - hoveredIndex), MAX_MARKER_HOVER_DISTANCE);
+			const hoverDistance = hoveredIndex === -1
+				? MAX_MARKER_HOVER_DISTANCE
+				: Math.min(Math.abs(index - hoveredIndex), MAX_MARKER_HOVER_DISTANCE);
 			marker.style.setProperty('--chat-scrollbar-prompt-marker-hover-distance', String(hoverDistance));
 		}
 	}
@@ -399,17 +410,19 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 		}
 
 		const previewLabel = getPreviewLabel(descriptor.markerType);
-		const previewTimestamp = isResponseVM(descriptor.target) ? descriptor.target.timestamp : descriptor.request.timestamp;
+		const previewTimestamp = isResponseVM(descriptor.target)
+			? (descriptor.target.model.completedAt ?? descriptor.target.model.timestamp)
+			: descriptor.request.timestamp;
 
 		this.previewHideDisposable.clear();
 		this.previewSwatch.dataset.markerType = descriptor.markerType;
 		this.previewLabel.textContent = previewLabel ?? '';
 		this.previewTypeRow.style.display = previewLabel ? 'flex' : 'none';
 		this.previewText.textContent = getPreviewText(descriptor.request.messageText);
-		this.previewTime.textContent = fromNow(previewTimestamp, true);
+		this.previewTime.textContent = formatPreviewTimestamp(previewTimestamp);
 		this.preview.style.top = `${markerTop + (markerHeight / 2)}px`;
 		this.preview.style.display = '';
-		this.preview.classList.add('visible');
+		this.preview.classList.add('chat-scrollbar-prompt-marker-preview-visible');
 	}
 
 	private schedulePreviewHide(): void {
@@ -423,7 +436,7 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 
 	private hidePreview(): void {
 		this.previewHideDisposable.clear();
-		this.preview.classList.remove('visible');
+		this.preview.classList.remove('chat-scrollbar-prompt-marker-preview-visible');
 		this.preview.style.display = 'none';
 	}
 
@@ -490,7 +503,8 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			marker.style.height = `${hitboxHeight}px`;
 			marker.style.width = `${MARKER_INLINE_SIZE}px`;
 			marker.style.insetInlineEnd = '0';
-			marker.style.setProperty('--chat-scrollbar-prompt-marker-resting-width', `${promptHoverWidthById.get(descriptor.id) ?? MARKER_INLINE_SIZE}px`);
+			marker.style.setProperty('--chat-scrollbar-prompt-marker-resting-width', `${MARKER_INLINE_SIZE}px`);
+			marker.style.setProperty('--chat-scrollbar-prompt-marker-hover-width', `${promptHoverWidthById.get(descriptor.id) ?? MARKER_INLINE_SIZE}px`);
 			marker.style.setProperty('--chat-scrollbar-prompt-marker-magnified-width', `${MAX_PROMPT_HOVER_INLINE_SIZE}px`);
 			marker.style.zIndex = String(descriptor.priority);
 			marker.className = `chat-scrollbar-prompt-marker chat-scrollbar-prompt-marker-type-${descriptor.markerType}`;
@@ -786,6 +800,15 @@ function getPreviewText(messageText: string): string {
 	return firstLine.length > MARKER_PREVIEW_CHAR_LIMIT
 		? `${firstLine.slice(0, MARKER_PREVIEW_CHAR_LIMIT - 1)}…`
 		: firstLine;
+}
+
+function formatPreviewTimestamp(timestamp: number): string {
+	const date = new Date(timestamp);
+	const includeYear = date.getFullYear() !== new Date().getFullYear();
+	return (includeYear
+		? markerPreviewTimestampFormatters.withYear
+		: markerPreviewTimestampFormatters.withoutYear
+	).value.format(date);
 }
 
 function getPreviewLabel(markerType: IChatScrollbarPromptMarkerDescriptor['markerType']): string | undefined {

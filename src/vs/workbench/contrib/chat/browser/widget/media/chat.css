@@ -4496,16 +4496,16 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	padding: var(--vscode-spacing-size80) var(--vscode-spacing-size120);
 	border: var(--vscode-strokeThickness) solid var(--vscode-editorHoverWidget-border);
 	border-radius: var(--vscode-cornerRadius-medium);
-	background-color: var(--vscode-editorHoverWidget-background);
+	background-color: #1e1e1e;
+	background-color: var(--vscode-editor-background, var(--vscode-sideBar-background, #1e1e1e));
+	background-image: none;
 	color: var(--vscode-editorHoverWidget-foreground);
 	box-shadow: var(--vscode-widget-shadow);
-	opacity: 0;
 	transform: translateY(-50%) translateX(var(--vscode-spacing-size80));
 	z-index: 13;
 }
 
-.chat-scrollbar-prompt-marker-preview.visible {
-	opacity: 1;
+.chat-scrollbar-prompt-marker-preview.chat-scrollbar-prompt-marker-preview-visible {
 	transform: translateY(-50%) translateX(0);
 }
 
@@ -4531,6 +4531,8 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .chat-scrollbar-prompt-marker-preview-text {
 	font-size: 12px;
 	line-height: 1.4;
+	white-space: normal;
+	overflow-wrap: anywhere;
 	word-break: break-word;
 }
 
@@ -4574,10 +4576,15 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	inset-inline-end: 0;
 	top: 50%;
 	transform: translateY(-50%);
-	inline-size: calc(var(--chat-scrollbar-prompt-marker-magnified-width, var(--vscode-spacing-size160)) + var(--vscode-spacing-size80));
-	block-size: var(--vscode-spacing-size120);
+	inline-size: calc(
+		var(--chat-scrollbar-prompt-marker-resting-width, 100%)
+		+ ((3 - var(--chat-scrollbar-prompt-marker-hover-distance, 3)) / 3)
+		* (var(--chat-scrollbar-prompt-marker-magnified-width, var(--chat-scrollbar-prompt-marker-resting-width, 100%)) - var(--chat-scrollbar-prompt-marker-resting-width, 100%))
+		+ var(--vscode-spacing-size20)
+	);
+	block-size: calc(var(--vscode-spacing-size40) + var(--vscode-spacing-size20));
 	border-radius: var(--vscode-cornerRadius-medium);
-	background-color: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+	background-color: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
 	z-index: 0;
 }
 
@@ -4603,7 +4610,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 }
 
 .monaco-workbench.monaco-enable-motion .chat-scrollbar-prompt-marker-preview {
-	transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .monaco-reduce-motion .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker::before,
