@@ -4542,22 +4542,6 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	opacity: 0.8;
 }
 
-.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='askQuestion'] {
-	background-color: var(--vscode-charts-purple, #e5e57b);
-}
-
-.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='fileChange'] {
-	background-color: var(--vscode-charts-blue, #5AA4FA);
-}
-
-.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='compaction'] {
-	background-color: var(--vscode-charts-orange, #eca625);
-}
-
-.chat-scrollbar-prompt-marker-preview-swatch[data-marker-type='error'] {
-	background-color: var(--vscode-charts-red, #f85149);
-}
-
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker {
 	position: absolute;
 	box-sizing: border-box;
@@ -4639,22 +4623,6 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .chat-scrollbar-prompt-markers.chat-scrollbar-prompt-markers-hover > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.in-viewport::before,
 .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-prompt.active::before {
 	background-color: var(--vscode-scrollbarSlider-activeBackground);
-}
-
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-askQuestion::before {
-	background-color: var(--vscode-charts-purple, #e5e57b);
-}
-
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-fileChange::before {
-	background-color: var(--vscode-charts-blue, #5AA4FA);
-}
-
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-compaction::before {
-	background-color: var(--vscode-charts-orange, #eca625);
-}
-
-.chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker.chat-scrollbar-prompt-marker-type-error::before {
-	background-color: var(--vscode-charts-red, #f85149);
 }
 
 .hc-black .chat-scrollbar-prompt-markers > .chat-scrollbar-prompt-marker,

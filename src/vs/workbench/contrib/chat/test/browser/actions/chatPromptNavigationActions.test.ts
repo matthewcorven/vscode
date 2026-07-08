@@ -89,7 +89,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		assert.deepStrictEqual(descriptors.map(d => d.request.id), ['request-2', 'request-4']);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors assigns taxonomy types and priorities', () => {
+	test('getScrollbarPromptMarkerDescriptors assigns prompt types and priorities', () => {
 		const items = [
 			request('request-1', 0, 'Can you help me?', 1),
 			response('request-1', { parts: [{ kind: 'questionCarousel', isUsed: false }] }),
@@ -109,32 +109,26 @@ suite('Chat scrollbar prompt marker helpers', () => {
 			priority: descriptor.priority,
 		})), [
 			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
-			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.AskQuestion, priority: 70 },
 			{ id: 'request-2', targetId: 'request-2', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
-			{ id: 'request-2-response', targetId: 'request-2-response', markerType: ChatScrollbarPromptMarkerType.FileChange, priority: 80 },
-			{ id: 'request-3', targetId: 'request-3', markerType: ChatScrollbarPromptMarkerType.Compaction, priority: 90 },
+			{ id: 'request-3', targetId: 'request-3', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
 			{ id: 'request-4', targetId: 'request-4', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
-			{ id: 'request-4-response', targetId: 'request-4-response', markerType: ChatScrollbarPromptMarkerType.FileChange, priority: 80 },
 			{ id: 'request-5', targetId: 'request-5', markerType: ChatScrollbarPromptMarkerType.Prompt, priority: 60 },
 		]);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors uses the response error state for error markers', () => {
-		const errorResponse = response('request-6', { errorDetails: { message: 'boom' } as never });
+	test('getScrollbarPromptMarkerDescriptors ignores paired responses', () => {
 		const items = [
 			request('request-6', 0, 'The agent failed', 6),
-			errorResponse,
+			response('request-6', { errorDetails: { message: 'boom' } as never }),
 		];
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 
 		assert.deepStrictEqual(descriptors.map(descriptor => ({ id: descriptor.id, markerType: descriptor.markerType })), [
 			{ id: 'request-6', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-6-response', markerType: ChatScrollbarPromptMarkerType.Error },
 		]);
-		assert.strictEqual(descriptors[1].priority, 100);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors does not infer ask questions, file changes, or compaction from message text alone', () => {
+	test('getScrollbarPromptMarkerDescriptors does not infer marker variants from message text alone', () => {
 		const items = [
 			request('request-1', 0, 'Can you help me?', 1),
 			response('request-1'),
@@ -151,7 +145,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		]);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors keeps prompt and file-change markers distinct for a create-file flow', () => {
+	test('getScrollbarPromptMarkerDescriptors keeps only prompt markers for a create-file flow', () => {
 		const items = [
 			request('request-1', 0, 'create a hello world file', 1),
 			response('request-1', { parts: [{ kind: 'externalEdit' }] }),
@@ -165,12 +159,11 @@ suite('Chat scrollbar prompt marker helpers', () => {
 			markerType: descriptor.markerType,
 		})), [
 			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.FileChange },
 			{ id: 'request-2', targetId: 'request-2', markerType: ChatScrollbarPromptMarkerType.Prompt },
 		]);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors treats editedFileEvents as a file-change response signal', () => {
+	test('getScrollbarPromptMarkerDescriptors ignores editedFileEvents for marker creation', () => {
 		const items = [
 			{ ...request('request-1', 0, 'create a hello world file', 1), editedFileEvents: [{ uri: undefined as never, eventKind: 1 }] },
 			response('request-1'),
@@ -179,40 +172,6 @@ suite('Chat scrollbar prompt marker helpers', () => {
 
 		assert.deepStrictEqual(descriptors.map(descriptor => ({ id: descriptor.id, markerType: descriptor.markerType })), [
 			{ id: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.FileChange },
-		]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors groups multiple edit parts by edit tool invocation', () => {
-		const items = [
-			request('request-1', 0, 'make several edits', 1),
-			response('request-1', {
-				parts: [
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_createFile' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_createFile' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_multiReplaceString' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-					{ kind: 'undoStop' },
-					{ kind: 'codeblockUri' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-					{ kind: 'undoStop' },
-					{ kind: 'codeblockUri' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_replaceString' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-				],
-			}),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-		const fileChangeDescriptors = descriptors.filter(descriptor => descriptor.markerType === ChatScrollbarPromptMarkerType.FileChange);
-
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), [
-			'request-1-response#fileChange0',
-			'request-1-response#fileChange1',
-			'request-1-response#fileChange2',
-			'request-1-response#fileChange3',
 		]);
 	});
 
@@ -262,7 +221,6 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		];
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 
-		// request-2 survives (highest attempt wins; timestamp is only a tie-break for equal attempts)
 		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.id), ['request-2']);
 	});
 
@@ -273,164 +231,34 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		];
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 
-		// Both have attempt=0, so the later timestamp wins
 		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.id), ['request-2']);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors deduplicates compaction requests by id, not message text', () => {
+	test('getScrollbarPromptMarkerDescriptors deduplicates slash commands by message text', () => {
 		const items = [
 			request('request-1', 0, 'compact', 1, { slashCommandName: 'compact' }),
 			request('request-2', 0, 'compact', 2, { slashCommandName: 'compact' }),
 		];
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 
-		// Both survive because compaction deduplicates by id, not message text
-		assert.deepStrictEqual(
-			descriptors.map(descriptor => ({ id: descriptor.id, markerType: descriptor.markerType })),
-			[
-				{ id: 'request-1', markerType: ChatScrollbarPromptMarkerType.Compaction },
-				{ id: 'request-2', markerType: ChatScrollbarPromptMarkerType.Compaction },
-			],
-		);
+		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.id), ['request-2']);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors keeps system-initiated compaction requests', () => {
+	test('getScrollbarPromptMarkerDescriptors excludes system-initiated compaction requests', () => {
 		const items = [
 			request('request-1', 0, 'compact', 1, { isSystemInitiated: true, slashCommandName: 'compact' }),
 		];
 		const descriptors = getScrollbarPromptMarkerDescriptors(items);
 
-		assert.deepStrictEqual(descriptors.map(descriptor => ({ id: descriptor.id, markerType: descriptor.markerType })), [
-			{ id: 'request-1', markerType: ChatScrollbarPromptMarkerType.Compaction },
-		]);
+		assert.deepStrictEqual(descriptors, []);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors classifies a response with errorDetails as Error even when it also has ask-question and file-change parts', () => {
-		const items = [
-			request('request-1', 0, 'help', 1),
-			response('request-1', {
-				errorDetails: { message: 'boom' } as never,
-				parts: [
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_askQuestions' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-				],
-			}),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-
-		assert.deepStrictEqual(descriptors.map(descriptor => ({ id: descriptor.id, markerType: descriptor.markerType })), [
-			{ id: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.Error },
-		]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors classifies a response with both ask-question and file-change parts as AskQuestion', () => {
-		const items = [
-			request('request-1', 0, 'help', 1),
-			response('request-1', {
-				parts: [
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_askQuestions' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-				],
-			}),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-
-		assert.deepStrictEqual(descriptors.map(descriptor => ({ id: descriptor.id, markerType: descriptor.markerType })), [
-			{ id: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.AskQuestion },
-		]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors emits a FileChange marker targeting the request when editedFileEvents is set and response is missing', () => {
-		const items = [
-			{ ...request('request-1', 0, 'create a file', 1), editedFileEvents: [{ uri: undefined as never, eventKind: 1 }] },
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-
-		assert.deepStrictEqual(descriptors.map(descriptor => ({
-			id: descriptor.id,
-			targetId: descriptor.target.id,
-			markerType: descriptor.markerType,
-		})), [
-			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-1-fileChange', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.FileChange },
-		]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors emits a FileChange marker targeting the response when editedFileEvents is set and response has no edit parts', () => {
-		const items = [
-			{ ...request('request-1', 0, 'create a file', 1), editedFileEvents: [{ uri: undefined as never, eventKind: 1 }] },
-			response('request-1'),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-
-		assert.deepStrictEqual(descriptors.map(descriptor => ({
-			id: descriptor.id,
-			targetId: descriptor.target.id,
-			markerType: descriptor.markerType,
-		})), [
-			{ id: 'request-1', targetId: 'request-1', markerType: ChatScrollbarPromptMarkerType.Prompt },
-			{ id: 'request-1-response', targetId: 'request-1-response', markerType: ChatScrollbarPromptMarkerType.FileChange },
-		]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors uses the response id (no #fileChangeN suffix) for a single file-change response', () => {
-		const items = [
-			request('request-1', 0, 'make an edit', 1),
-			response('request-1', {
-				parts: [
-					{ kind: 'toolInvocationSerialized', toolId: 'copilot_createFile' },
-					{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-				],
-			}),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-		const fileChangeDescriptors = descriptors.filter(descriptor => descriptor.markerType === ChatScrollbarPromptMarkerType.FileChange);
-
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), ['request-1-response']);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors uses suffixed file-change ids for multi-cluster responses', () => {
-		const parts = [
-			{ kind: 'toolInvocationSerialized', toolId: 'copilot_createFile' },
-			{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-			{ kind: 'toolInvocationSerialized', toolId: 'copilot_createFile' },
-			{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-		];
-		const items = [
-			request('request-1', 0, 'make edits', 1),
-			response('request-1', { parts }),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-		const fileChangeDescriptors = descriptors.filter(descriptor => descriptor.markerType === ChatScrollbarPromptMarkerType.FileChange);
-
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), [
-			'request-1-response#fileChange0',
-			'request-1-response#fileChange1',
-		]);
-	});
-
-	test('getScrollbarPromptMarkerDescriptors emits a single unsuffixed id for a single-part file-change cluster', () => {
-		const parts = [
-			{ kind: 'textEditGroup', edits: [], done: true, uri: undefined as never },
-		];
-		const items = [
-			request('request-1', 0, 'make an edit', 1),
-			response('request-1', { parts }),
-		];
-		const descriptors = getScrollbarPromptMarkerDescriptors(items);
-		const fileChangeDescriptors = descriptors.filter(descriptor => descriptor.markerType === ChatScrollbarPromptMarkerType.FileChange);
-
-		assert.deepStrictEqual(fileChangeDescriptors.map(descriptor => descriptor.id), ['request-1-response']);
-	});
-
-	test('getFocusedScrollbarPromptMarkerId returns the response id for a response, not the request id', () => {
+	test('getFocusedScrollbarPromptMarkerId maps response focus to the request marker id', () => {
 		const req = request('request-1', 0, 'hello', 1);
 		const res = response('request-1');
 
 		assert.strictEqual(getFocusedScrollbarPromptMarkerId(req), 'request-1');
-		assert.strictEqual(getFocusedScrollbarPromptMarkerId(res), 'request-1-response');
+		assert.strictEqual(getFocusedScrollbarPromptMarkerId(res), 'request-1');
 		assert.strictEqual(getFocusedScrollbarPromptMarkerId(undefined), undefined);
 	});
 
@@ -459,7 +287,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		]);
 	});
 
-	test('getScrollbarPromptMarkerDescriptors always keeps the first and last markers when downsampling mixed marker types', () => {
+	test('getScrollbarPromptMarkerDescriptors always keeps the first and last markers when downsampling', () => {
 		const items = [
 			request('request-1', 0, 'prompt-1', 1),
 			response('request-1', { parts: [{ kind: 'externalEdit' }] }),
@@ -472,7 +300,7 @@ suite('Chat scrollbar prompt marker helpers', () => {
 		assert.deepStrictEqual(descriptors.map(descriptor => descriptor.id), [
 			'request-1',
 			'request-2',
-			'request-3-response',
+			'request-3',
 		]);
 	});
 });

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { VSBuffer } from '../../../../../../base/common/buffer.js';
 import { Event } from '../../../../../../base/common/event.js';
 import { Disposable, DisposableStore, IDisposable } from '../../../../../../base/common/lifecycle.js';
 import { waitForState } from '../../../../../../base/common/observable.js';
@@ -68,6 +69,14 @@ function getAgentData(id: string): IChatAgentData {
 		slashCommands: [],
 		disambiguation: [],
 	};
+}
+
+interface IChatEditingSessionTestAccess {
+	_getOrCreateModifiedFileEntry(...args: unknown[]): Promise<unknown>;
+	_fileService: {
+		readFile(resource: URI): Promise<{ value: VSBuffer }>;
+	};
+	_externalEditOperations: Map<number, { snapshots: Map<URI, string> }>;
 }
 
 suite('ChatEditingService', function () {
@@ -322,6 +331,51 @@ suite('ChatEditingService', function () {
 			assert.ok(modified.getValue().includes('FooBar'));
 			assert.ok(original.getValue().includes('FooBar'));
 		});
+	});
+
+	test('external edits on existing files preserve a before-snapshot when entry creation initially fails', async function () {
+		const existingFileContents = 'before\n';
+		const uri = URI.from({ scheme: 'test', path: `/chat-editing-existing-file-${Date.now()}.txt` });
+
+		const modelRef = store.add(chatService.startNewLocalSession(ChatAgentLocation.Chat));
+		const model = modelRef.object as ChatModel;
+		const session = model.editingSession;
+		assertType(session, 'session not created');
+
+		const chatRequest = model.addRequest({ text: '', parts: [] }, { variables: [] }, 0);
+		assertType(chatRequest.response);
+		const response = chatRequest.response;
+
+		const sessionAccess = session as unknown as IChatEditingSessionTestAccess;
+		const originalGetOrCreate = sessionAccess._getOrCreateModifiedFileEntry.bind(session);
+		const originalReadFile = sessionAccess._fileService.readFile.bind(sessionAccess._fileService);
+		let readCalls = 0;
+		const readUris: string[] = [];
+		let shouldFailOnce = true;
+		sessionAccess._getOrCreateModifiedFileEntry = async (...args: unknown[]) => {
+			if (shouldFailOnce) {
+				shouldFailOnce = false;
+				return undefined;
+			}
+
+			return originalGetOrCreate(...args);
+		};
+		sessionAccess._fileService.readFile = async (resource: URI) => {
+			readUris.push(resource.toString());
+			if (isEqual(resource, uri)) {
+				readCalls++;
+				return { value: VSBuffer.fromString(existingFileContents) };
+			}
+
+			return originalReadFile(resource);
+		};
+
+		const undoStopId = 'stop-existing-file';
+		await session.startExternalEdits(response, 1, [uri], undoStopId);
+		const externalOp = sessionAccess._externalEditOperations.get(1);
+		assert.ok(readUris.includes(uri.toString()), `expected fileService.readFile to include ${uri.toString()}, got ${JSON.stringify(readUris)}`);
+		assert.strictEqual(readCalls, 1);
+		assert.strictEqual(externalOp?.snapshots.get(uri), existingFileContents);
 	});
 
 	test('ChatEditingService merges text edits it shouldn\'t merge, #272679', async function () {

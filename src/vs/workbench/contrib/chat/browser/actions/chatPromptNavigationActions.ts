@@ -22,7 +22,6 @@ import {
 	isRequestVM,
 	isResponseVM,
 } from '../../common/model/chatViewModel.js';
-import { isAskQuestionsToolInvocation } from '../widget/chatContentParts/toolInvocationParts/chatToolPartUtilities.js';
 
 type ChatPromptNavigationItem =
 	| IChatRequestViewModel
@@ -30,21 +29,11 @@ type ChatPromptNavigationItem =
 	| IChatPendingDividerViewModel;
 
 /**
- * The semantic category of a scrollbar marker. Each type maps to a distinct
- * color and lane assignment, allowing users to visually distinguish different
- * kinds of chat turns at a glance in the overview ruler.
+ * The semantic category of a scrollbar marker.
  */
 export const enum ChatScrollbarPromptMarkerType {
-	/** A user-authored prompt (request). Rendered in the right lane. */
+	/** A user-authored prompt (request). */
 	Prompt = 'prompt',
-	/** A response containing an ask-questions tool invocation or question carousel. Rendered in the left lane. */
-	AskQuestion = 'askQuestion',
-	/** A response containing one or more file edits. Rendered full-width. */
-	FileChange = 'fileChange',
-	/** A system-initiated compaction request (e.g. `/compact`). Rendered full-width. */
-	Compaction = 'compaction',
-	/** A response that ended in an error. Rendered full-width. */
-	Error = 'error',
 }
 
 /**
@@ -58,20 +47,17 @@ export interface IChatScrollbarPromptMarkerTarget {
 /**
  * Describes a single marker to be rendered on the chat scrollbar overview ruler.
  *
- * A descriptor is produced for each user prompt (request row) and, conditionally,
- * for its paired response row. File-change responses may produce multiple
- * descriptors — one per logical edit cluster within the response — so that
- * individual file operations are individually navigable.
+ * A descriptor is produced for each surviving user prompt request row.
  */
 export interface IChatScrollbarPromptMarkerDescriptor {
-	/** Unique identifier for this marker. May include a suffix for multi-marker responses (e.g. `responseId#fileChange0`). */
+	/** Unique identifier for this marker. */
 	readonly id: string;
 	/** The ID of the request that this marker belongs to. */
 	readonly requestId: string;
 	/** The request view model that originated this marker's turn. */
 	readonly request: IChatRequestViewModel;
-	/** The chat row (request or response) that this marker positions itself against and navigates to when clicked. */
-	readonly target: IChatRequestViewModel | IChatResponseViewModel;
+	/** The request row that this marker positions itself against and navigates to when clicked. */
+	readonly target: IChatRequestViewModel;
 	/** The semantic type, determining color and priority. */
 	readonly markerType: ChatScrollbarPromptMarkerType;
 	/** Z-index ordering value; higher-priority markers render above lower ones when overlapping. */
@@ -80,8 +66,8 @@ export interface IChatScrollbarPromptMarkerDescriptor {
 
 /**
  * Returns all request view models from the given chat items.
- * No filtering or deduplication is applied here — system-initiated filtering
- * and deduplication by message text happen in {@link getScrollbarPromptMarkerDescriptors}.
+ * No filtering or deduplication is applied here — that happens in
+ * {@link getScrollbarPromptMarkerDescriptors}.
  */
 export function getRequestViewModels(
 	items: readonly ChatPromptNavigationItem[],
@@ -94,47 +80,26 @@ export function getRequestViewModels(
 /**
  * Computes all scrollbar marker descriptors for a given set of chat items.
  *
- * The algorithm works in three phases:
- * 1. **Index responses** by their owning request ID for O(1) lookup.
- * 2. **Deduplicate requests** by message text (or by ID for compaction), keeping
- *    only the latest attempt. System-initiated requests are excluded unless they
- *    are compaction requests.
- * 3. **Emit descriptors** — one prompt marker per surviving request, plus zero or
- *    more response markers (error, ask-question, or file-change) for the paired
- *    response. File-change responses may emit multiple markers, one per logical
- *    edit cluster.
+ * The algorithm keeps only the latest request per message text and excludes
+ * system-initiated requests from the marker set.
  */
 export function getScrollbarPromptMarkerDescriptors(
 	items: readonly ChatPromptNavigationItem[],
 	maximumMarkers = Number.POSITIVE_INFINITY,
 ): IChatScrollbarPromptMarkerDescriptor[] {
 	const latestByDedupKey = new Map<string, IChatRequestViewModel>();
-	const responseByRequestId = new Map<string, IChatResponseViewModel>();
 
-	// Phase 1: Index responses by request ID
-	for (const item of items) {
-		if (isResponseVM(item)) {
-			responseByRequestId.set(item.requestId, item);
-		}
-	}
-
-	// Phase 2: Deduplicate requests, keeping the latest attempt per message text
+	// Deduplicate requests, keeping the latest attempt per message text.
 	for (const item of items) {
 		if (!isRequestVM(item)) {
 			continue;
 		}
 
-		// Skip system-initiated requests unless they are compaction
-		if (item.isSystemInitiated && !isCompactionRequest(item)) {
+		if (item.isSystemInitiated) {
 			continue;
 		}
 
-		// Compaction requests are deduplicated by ID (each is unique);
-		// all other requests are deduplicated by message text
-		const dedupKey =
-			isCompactionRequest(item)
-				? item.id
-				: item.messageText;
+		const dedupKey = item.messageText;
 		const previous = latestByDedupKey.get(dedupKey);
 		if (
 			!previous ||
@@ -153,41 +118,31 @@ export function getScrollbarPromptMarkerDescriptors(
 			continue;
 		}
 
-		if (item.isSystemInitiated && !isCompactionRequest(item)) {
+		if (item.isSystemInitiated) {
 			continue;
 		}
 
-		const dedupKey =
-			isCompactionRequest(item)
-				? item.id
-				: item.messageText;
+		const dedupKey = item.messageText;
 		if (latestByDedupKey.get(dedupKey) === item) {
 			selectedRequestIds.add(item.id);
 		}
 	}
 
-	// Phase 3: Emit descriptors for each surviving request and its paired response
+	// Emit one prompt marker per surviving request.
 	const descriptors: IChatScrollbarPromptMarkerDescriptor[] = [];
 	for (const item of items) {
 		if (!isRequestVM(item) || !selectedRequestIds.has(item.id)) {
 			continue;
 		}
 
-		// Emit a prompt or compaction marker for the request row itself
-		const requestMarkerType = isCompactionRequest(item)
-			? ChatScrollbarPromptMarkerType.Compaction
-			: ChatScrollbarPromptMarkerType.Prompt;
 		descriptors.push({
 			id: item.id,
 			requestId: item.id,
 			request: item,
 			target: item,
-			markerType: requestMarkerType,
-			priority: getMarkerPriority(requestMarkerType),
+			markerType: ChatScrollbarPromptMarkerType.Prompt,
+			priority: getMarkerPriority(),
 		});
-
-		// Emit zero or more markers for the paired response row
-		descriptors.push(...getResponseMarkerDescriptors(item, responseByRequestId.get(item.id)));
 	}
 
 	return downsampleMarkerDescriptors(descriptors, maximumMarkers);
@@ -214,242 +169,11 @@ function downsampleMarkerDescriptors(
 }
 
 /**
- * Computes marker descriptors for a response, classifying it by its most
- * significant semantic property. The classification priority is:
- * 1. Error — a failed response always wins
- * 2. Ask-question — a response containing an ask-questions tool or carousel
- * 3. File-change — a response containing file edits (may produce multiple markers)
- * 4. File-change fallback — when the request has editedFileEvents but the response
- *    has no structured edit parts (e.g. the response is missing or incomplete)
- *
- * If none of these apply, no response marker is emitted.
- */
-function getResponseMarkerDescriptors(
-	request: IChatRequestViewModel,
-	response: IChatResponseViewModel | undefined,
-): IChatScrollbarPromptMarkerDescriptor[] {
-	if (!response) {
-		return hasFileChangeRequest(request)
-			? [{
-				id: `${request.id}-fileChange`,
-				requestId: request.id,
-				request,
-				target: request,
-				markerType: ChatScrollbarPromptMarkerType.FileChange,
-				priority: getMarkerPriority(ChatScrollbarPromptMarkerType.FileChange),
-			}]
-			: [];
-	}
-
-	if (response.errorDetails) {
-		return [{
-			id: response.id,
-			requestId: request.id,
-			request,
-			target: response,
-			markerType: ChatScrollbarPromptMarkerType.Error,
-			priority: getMarkerPriority(ChatScrollbarPromptMarkerType.Error),
-		}];
-	}
-
-	if (hasAskQuestionsResponse(response)) {
-		return [{
-			id: response.id,
-			requestId: request.id,
-			request,
-			target: response,
-			markerType: ChatScrollbarPromptMarkerType.AskQuestion,
-			priority: getMarkerPriority(ChatScrollbarPromptMarkerType.AskQuestion),
-		}];
-	}
-
-	const fileChangeDescriptors = getFileChangeResponseDescriptors(request, response);
-	if (fileChangeDescriptors.length > 0) {
-		return fileChangeDescriptors;
-	}
-
-	if (hasFileChangeRequest(request)) {
-		return [{
-			id: response.id,
-			requestId: request.id,
-			request,
-			target: response,
-			markerType: ChatScrollbarPromptMarkerType.FileChange,
-			priority: getMarkerPriority(ChatScrollbarPromptMarkerType.FileChange),
-		}];
-	}
-
-	return [];
-}
-
-/**
  * Maps a marker type to its z-index priority for overlap resolution.
  * Higher values render above lower ones when markers collide vertically.
  */
-function getMarkerPriority(
-	markerType: ChatScrollbarPromptMarkerType,
-): number {
-	switch (markerType) {
-		case ChatScrollbarPromptMarkerType.Error:
-			return 100;
-		case ChatScrollbarPromptMarkerType.Compaction:
-			return 90;
-		case ChatScrollbarPromptMarkerType.FileChange:
-			return 80;
-		case ChatScrollbarPromptMarkerType.AskQuestion:
-			return 70;
-		default:
-			return 60;
-	}
-}
-
-/**
- * Returns true if the request was initiated by the `/compact` slash command.
- */
-function isCompactionRequest(request: IChatRequestViewModel): boolean {
-	return request.slashCommand?.name === 'compact';
-}
-
-/**
- * Returns true if the response contains an ask-questions tool invocation
- * (identified by tool ID) or a question carousel part.
- */
-function hasAskQuestionsResponse(response: IChatResponseViewModel | undefined): boolean {
-	if (!response) {
-		return false;
-	}
-
-	return response.model.entireResponse.value.some(part =>
-		(part.kind === 'toolInvocation' || part.kind === 'toolInvocationSerialized')
-			? isAskQuestionsToolInvocation(part)
-			: part.kind === 'questionCarousel'
-	);
-}
-
-/**
- * Computes one or more file-change marker descriptors for a response by
- * grouping its edit parts into logical clusters. Each cluster typically
- * corresponds to a single file write operation (e.g. `copilot_createFile`
- * followed by its `textEditGroup`), allowing users to navigate to
- * individual file operations within a large response.
- */
-function getFileChangeResponseDescriptors(
-	request: IChatRequestViewModel,
-	response: IChatResponseViewModel,
-): IChatScrollbarPromptMarkerDescriptor[] {
-	const parts = response.model.entireResponse.value;
-	const groups = groupFileEditParts(parts);
-	if (groups.length === 0) {
-		return [];
-	}
-
-	return groups.map((group, index) => ({
-		id: groups.length === 1 ? response.id : `${response.id}#fileChange${index}`,
-		requestId: request.id,
-		request,
-		target: response,
-		markerType: ChatScrollbarPromptMarkerType.FileChange,
-		priority: getMarkerPriority(ChatScrollbarPromptMarkerType.FileChange),
-	}));
-}
-
-/**
- * Groups response parts into logical file-edit clusters. A cluster starts at
- * a file-write tool invocation (e.g. `copilot_createFile`, `copilot_replaceString`)
- * and extends through all consecutive edit parts (`textEditGroup`, `notebookEditGroup`,
- * `externalEdit`) that follow it. Non-edit parts between edit parts do not break
- * the cluster, but a new write tool invocation starts a new cluster.
- *
- * If no write tool invocations are found, each edit part becomes its own cluster.
- */
-function groupFileEditParts(
-	parts: readonly IChatResponseViewModel['model']['entireResponse']['value'][number][],
-): Array<{ startIndex: number; endExclusive: number }> {
-	const groups: Array<{ startIndex: number; endExclusive: number }> = [];
-	let pendingWriteToolIndex: number | undefined;
-	let currentGroup: { startIndex: number; endExclusive: number } | undefined;
-
-	for (let index = 0; index < parts.length; index++) {
-		const part = parts[index];
-
-		if (isFileWriteToolInvocation(part)) {
-			// A new write tool starts a new cluster — flush the previous one
-			if (currentGroup) {
-				groups.push(currentGroup);
-				currentGroup = undefined;
-			}
-			pendingWriteToolIndex = index;
-			continue;
-		}
-
-		if (!isFileEditPart(part)) {
-			continue;
-		}
-
-		if (!currentGroup) {
-			currentGroup = {
-				startIndex: pendingWriteToolIndex ?? index,
-				endExclusive: index + 1,
-			};
-		} else {
-			currentGroup.endExclusive = index + 1;
-		}
-	}
-
-	if (currentGroup) {
-		groups.push(currentGroup);
-	}
-
-	// Fallback: if no write tool invocations were found, treat each edit part as its own cluster
-	if (groups.length > 0) {
-		return groups;
-	}
-
-	return parts.flatMap((part, index) => isFileEditPart(part)
-		? [{ startIndex: index, endExclusive: index + 1 }]
-		: []);
-}
-
-/**
- * Returns true if the response part represents a file edit
- * (text edit group, notebook edit group, or external edit).
- */
-function isFileEditPart(
-	part: IChatResponseViewModel['model']['entireResponse']['value'][number],
-): boolean {
-	switch (part.kind) {
-		case 'textEditGroup':
-		case 'notebookEditGroup':
-		case 'externalEdit':
-			return true;
-		default:
-			return false;
-	}
-}
-
-/**
- * Returns true if the response part is a tool invocation that performs a
- * file write operation (create, delete, replace, rename, etc.).
- * These tool invocations mark the start of a new file-edit cluster.
- */
-function isFileWriteToolInvocation(
-	part: IChatResponseViewModel['model']['entireResponse']['value'][number],
-): boolean {
-	if (part.kind !== 'toolInvocation' && part.kind !== 'toolInvocationSerialized') {
-		return false;
-	}
-
-	return /^copilot_(createFile|createDirectory|deleteFile|replaceString|multiReplaceString|insertEditIntoFile|applyPatch|renameFile|moveFile)$/i.test(part.toolId);
-}
-
-/**
- * Returns true if the request has recorded file-edit events
- * (from `editedFileEvents` on the request model). This is used as a
- * fallback signal for file-change markers when the response itself
- * has no structured edit parts.
- */
-function hasFileChangeRequest(request: IChatRequestViewModel): boolean {
-	return (request.editedFileEvents?.length ?? 0) > 0;
+function getMarkerPriority(): number {
+	return 60;
 }
 
 export function getFocusedScrollbarPromptMarkerRequestId(
@@ -473,7 +197,19 @@ export function getFocusedScrollbarPromptMarkerRequestId(
 export function getFocusedScrollbarPromptMarkerId(
 	item: IChatRequestViewModel | IChatResponseViewModel | undefined,
 ): string | undefined {
-	return item?.id;
+	if (!item) {
+		return undefined;
+	}
+
+	if (isRequestVM(item)) {
+		return item.id;
+	}
+
+	if (isResponseVM(item)) {
+		return item.requestId;
+	}
+
+	return undefined;
 }
 
 export function applyScrollbarPromptMarkerClickBehavior(

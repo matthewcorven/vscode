@@ -657,6 +657,24 @@ suite('ChatEditingCheckpointTimeline', function () {
 		assert.strictEqual(operations[1].epoch, epoch2);
 	});
 
+	test('getDiffsForFilesInRequest falls back to raw text edit counts when no baseline exists', function () {
+		const uri = URI.parse('file:///test.txt');
+
+		timeline.createCheckpoint('req1', undefined, 'Start req1');
+		timeline.recordFileOperation(createTextEditOperation(
+			uri,
+			'req1',
+			timeline.incrementEpoch(),
+			[{ range: new Range(1, 1, 1, 1), text: 'abc' }]
+		));
+		timeline.createCheckpoint('req1', 'stop1', 'Edit complete');
+
+		const diffs = timeline.getDiffsForFilesInRequest('req1').get();
+		assert.strictEqual(diffs.length, 1);
+		assert.strictEqual(diffs[0].added, 1);
+		assert.strictEqual(diffs[0].removed, 0);
+	});
+
 	test('navigateToCheckpoint throws error for invalid checkpoint ID', async function () {
 		let errorThrown = false;
 		try {

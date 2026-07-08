@@ -733,6 +733,37 @@ export class ChatEditingCheckpointTimelineImpl implements IChatEditingCheckpoint
 		}
 	}
 
+	private _estimateTextEditOperationDiff(uri: URI, operations: readonly FileOperation[]): IEditSessionEntryDiff | undefined {
+		let added = 0;
+		let removed = 0;
+
+		for (const operation of operations) {
+			if (operation.type !== FileOperationType.TextEdit || !isEqual(operation.uri, uri)) {
+				continue;
+			}
+
+			for (const edit of operation.edits) {
+				added += edit.text ? edit.text.split(/\r\n|\r|\n/).length : 0;
+				removed += Math.max(edit.range.endLineNumber - edit.range.startLineNumber, 0);
+			}
+		}
+
+		if (added === 0 && removed === 0) {
+			return undefined;
+		}
+
+		return {
+			originalURI: uri,
+			modifiedURI: uri,
+			identical: false,
+			isFinal: true,
+			quitEarly: false,
+			added,
+			removed,
+			isBusy: false,
+		};
+	}
+
 	public getEntryDiffBetweenStops(uri: URI, requestId: string | undefined, stopId: string | undefined): IObservable<IEditSessionEntryDiff | undefined> {
 		const epochs = derivedOpts<{ start: ICheckpoint; end: ICheckpoint | undefined }>({ equalsFn: (a, b) => a.start === b.start && a.end === b.end }, reader => {
 			const checkpoints = this._checkpoints.read(reader);
@@ -923,6 +954,19 @@ export class ChatEditingCheckpointTimelineImpl implements IChatEditingCheckpoint
 
 	public getDiffsForFilesInRequest(requestId: string): IObservable<readonly IEditSessionEntryDiff[]> {
 		const boundsObservable = this._getRequestEpochBounds(requestId);
+		const requestOperations = derived(this, reader => {
+			const bounds = boundsObservable.read(reader);
+			return this._operations.read(reader).filter(operation => {
+				if (operation.epoch < bounds.start.epoch) {
+					return false;
+				}
+				if (bounds.end && operation.epoch >= bounds.end.epoch) {
+					return false;
+				}
+
+				return operation.requestId === requestId;
+			});
+		});
 		const startEpochs = derivedOpts<ResourceMap<number>>({ equalsFn: mapsStrictEqualIgnoreOrder }, reader => {
 			const uris = new ResourceMap<number>();
 			for (const value of this._fileBaselines.values()) {
@@ -948,8 +992,37 @@ export class ChatEditingCheckpointTimelineImpl implements IChatEditingCheckpoint
 			return uris;
 		});
 
+		const reconstructedDiffs = this._getDiffsForFilesAtEpochs(startEpochs, boundsObservable.map(b => b.end));
+		return derived(reader => {
+			const reconstructed = reconstructedDiffs.read(reader);
+			const operations = requestOperations.read(reader);
+			const merged = new ResourceMap<IEditSessionEntryDiff>();
 
-		return this._getDiffsForFilesAtEpochs(startEpochs, boundsObservable.map(b => b.end));
+			for (const diff of reconstructed) {
+				const fileUri = ChatEditingSnapshotTextModelContentProvider.getOriginalFileURI(diff.modifiedURI)
+					?? ChatEditingSnapshotTextModelContentProvider.getOriginalFileURI(diff.originalURI)
+					?? diff.modifiedURI;
+				const estimated = this._estimateTextEditOperationDiff(fileUri, operations);
+				if (estimated && diff.added === 0 && diff.removed === 0) {
+					merged.set(fileUri, { ...diff, added: estimated.added, removed: estimated.removed });
+				} else {
+					merged.set(fileUri, diff);
+				}
+			}
+
+			for (const operation of operations) {
+				if (operation.type !== FileOperationType.TextEdit || merged.has(operation.uri)) {
+					continue;
+				}
+
+				const estimated = this._estimateTextEditOperationDiff(operation.uri, operations);
+				if (estimated) {
+					merged.set(operation.uri, estimated);
+				}
+			}
+
+			return [...merged.values()];
+		});
 	}
 
 	private _getDiffsForFilesAtEpochs(startEpochs: IObservable<ResourceMap<number>>, endCheckpointObs: IObservable<ICheckpoint | undefined>) {

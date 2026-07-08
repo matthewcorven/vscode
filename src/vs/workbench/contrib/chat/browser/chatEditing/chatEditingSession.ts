@@ -719,8 +719,21 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 				} else {
 					// Save to disk to ensure disk state is current before external edits
 					await entry?.save();
-					// Take snapshot of current state
-					snapshots.set(resource, entry && this._getCurrentTextOrNotebookSnapshot(entry));
+					if (entry) {
+						// Take snapshot of current state
+						snapshots.set(resource, this._getCurrentTextOrNotebookSnapshot(entry));
+					} else {
+						// If we failed to materialize the entry for an existing file,
+						// preserve the current disk contents so stopExternalEdits can
+						// still compute a changed-file diff instead of falling back to a
+						// create classification.
+						try {
+							const data = await this._fileService.readFile(resource);
+							snapshots.set(resource, data.value.toString());
+						} catch {
+							snapshots.set(resource, undefined);
+						}
+					}
 				}
 				entry?.startExternalEdit();
 				acquiredLock.complete();
@@ -771,12 +784,15 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 			// For each resource, compute the diff and create edit parts
 			for (const [resource, beforeSnapshot] of operation.snapshots) {
 				let entry = this._getEntry(resource);
+				let recreatedEntry = false;
 
-				// Files that did not exist on disk before may not exist in our working
-				// set yet. Create those if that's the case.
-				if (!entry && beforeSnapshot === undefined) {
-					entry = await this._getOrCreateModifiedFileEntry(resource, NotExistBehavior.Abort, this._getTelemetryInfoForModel(responseModel), '');
+				// Recreate the working entry on demand when startExternalEdits failed
+				// to materialize it. If we have a before-snapshot, seed the recreated
+				// entry from that baseline so we can still compute a changed-file diff.
+				if (!entry) {
+					entry = await this._getOrCreateModifiedFileEntry(resource, NotExistBehavior.Abort, this._getTelemetryInfoForModel(responseModel), beforeSnapshot ?? '');
 					if (entry) {
+						recreatedEntry = true;
 						entry.startExternalEdit();
 						entry.acceptStreamingEditsStart(responseModel, operation.undoStopId, undefined);
 					}
@@ -795,6 +811,18 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 						afterSnapshot = data.value.toString();
 					} catch (_e) {
 						afterSnapshot = '';
+					}
+				} else if (recreatedEntry && beforeSnapshot !== undefined) {
+					// For a recreated entry, prefer the current disk contents directly.
+					// The model reference was created after edits landed and may still
+					// be stale relative to file-service state in tests and during
+					// external write races.
+					try {
+						const data = await this._fileService.readFile(resource);
+						afterSnapshot = data.value.toString();
+					} catch {
+						await entry.revertToDisk();
+						afterSnapshot = this._getCurrentTextOrNotebookSnapshot(entry) ?? '';
 					}
 				} else {
 					// Reload from disk to ensure in-memory model is in sync with file system
@@ -1203,6 +1231,11 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 			return await doCreate(ChatEditKind.Modified);
 		} catch (err) {
 			if (ifNotExists === NotExistBehavior.Abort) {
+				return undefined;
+			}
+
+			if (await this._fileService.exists(resource)) {
+				this._logService.warn('Failed to create modified entry for existing resource; not treating it as a file create', resource.toString(), err);
 				return undefined;
 			}
 

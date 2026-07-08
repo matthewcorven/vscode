@@ -11,7 +11,6 @@ import {
 	MutableDisposable,
 	toDisposable,
 } from '../../../../../base/common/lifecycle.js';
-import { localize } from '../../../../../nls.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import {
 	ChatConfiguration,
@@ -409,15 +408,12 @@ export class ChatScrollbarPromptMarkerController extends Disposable {
 			return;
 		}
 
-		const previewLabel = getPreviewLabel(descriptor.markerType);
-		const previewTimestamp = isResponseVM(descriptor.target)
-			? (descriptor.target.model.completedAt ?? descriptor.target.model.timestamp)
-			: descriptor.request.timestamp;
+		const previewTimestamp = descriptor.request.timestamp;
 
 		this.previewHideDisposable.clear();
 		this.previewSwatch.dataset.markerType = descriptor.markerType;
-		this.previewLabel.textContent = previewLabel ?? '';
-		this.previewTypeRow.style.display = previewLabel ? 'flex' : 'none';
+		this.previewLabel.textContent = '';
+		this.previewTypeRow.style.display = 'none';
 		this.previewText.textContent = getPreviewText(descriptor.request.messageText);
 		this.previewTime.textContent = formatPreviewTimestamp(previewTimestamp);
 		this.preview.style.top = `${markerTop + (markerHeight / 2)}px`;
@@ -811,17 +807,3 @@ function formatPreviewTimestamp(timestamp: number): string {
 	).value.format(date);
 }
 
-function getPreviewLabel(markerType: IChatScrollbarPromptMarkerDescriptor['markerType']): string | undefined {
-	switch (markerType) {
-		case 'askQuestion':
-			return localize('chat.scrollbarPromptMarkers.preview.askQuestion', 'Question');
-		case 'fileChange':
-			return localize('chat.scrollbarPromptMarkers.preview.fileChange', 'File Change');
-		case 'compaction':
-			return localize('chat.scrollbarPromptMarkers.preview.compaction', 'Compaction');
-		case 'error':
-			return localize('chat.scrollbarPromptMarkers.preview.error', 'Error');
-		default:
-			return undefined;
-	}
-}
